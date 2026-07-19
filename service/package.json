@@ -1,0 +1,33 @@
+{
+  "name": "agent-manager",
+  "version": "0.1.0",
+  "description": "A local-first librarian for every Claude session: organize, search, and locate across the CLI, the VS Code/Cursor extension, and the Claude desktop app.",
+  "type": "module",
+  "bin": {
+    "agent-manager": "bin/agent-manager.mjs"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "scripts": {
+    "index": "node bin/agent-manager.mjs index",
+    "status": "node bin/agent-manager.mjs status",
+    "serve": "node bin/agent-manager.mjs serve"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "session-manager",
+    "agent-manager",
+    "transcript",
+    "search"
+  ],
+  "license": "MIT"
+}

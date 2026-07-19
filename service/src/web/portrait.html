@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your Agent Portrait — Agent History</title>
+  <link rel="stylesheet" href="/portrait.css" />
+</head>
+<body>
+  <a class="backlink" href="/">‹ Agent History</a>
+
+  <!-- 1 · hero -->
+  <section class="hero" id="hero">
+    <div class="halo"></div>
+    <div class="eyebrow">YOUR AGENT PORTRAIT</div>
+    <h1 id="hero-title">You <span class="x">×</span> Agents</h1>
+    <p class="sub" id="hero-sub"></p>
+    <div class="bignums" id="bignums"></div>
+    <div class="scrollhint">scroll ↓</div>
+  </section>
+
+  <!-- 2 · rhythm -->
+  <section class="panel" id="rhythm">
+    <h2>Your rhythm</h2>
+    <p class="lede" id="rhythm-lede"></p>
+    <div class="heatwrap"><canvas id="heatmap"></canvas><div class="tip" id="heattip"></div></div>
+    <div class="hourswrap">
+      <div class="hours-label" id="hours-label"></div>
+      <canvas id="hours"></canvas>
+    </div>
+  </section>
+
+  <!-- 3 · attention river -->
+  <section class="panel" id="riverp">
+    <h2>Where your attention flowed</h2>
+    <p class="lede" id="river-lede"></p>
+    <div class="riverwrap"><canvas id="river"></canvas><div class="tip" id="rivertip"></div></div>
+    <div class="legend" id="river-legend"></div>
+  </section>
+
+  <!-- 4 · constellation -->
+  <section class="panel" id="constellationp">
+    <h2>The model of you</h2>
+    <p class="lede" id="const-lede"></p>
+    <div class="constwrap">
+      <canvas id="constellation"></canvas>
+      <div class="factcard" id="factcard"></div>
+    </div>
+  </section>
+
+  <!-- 5 · your voice -->
+  <section class="panel" id="voicep">
+    <h2>Your voice, steering</h2>
+    <p class="lede">Moments you corrected an agent — the raw material of your preferences.</p>
+    <div class="quotes" id="quotes"></div>
+  </section>
+
+  <!-- 6 · make it work for you -->
+  <section class="panel act" id="actp">
+    <h2>Make it work for you</h2>
+    <div class="actgrid">
+      <div class="actcard">
+        <h3>① Give every new session your context</h3>
+        <p>Copy the context book into <code>~/.claude/CLAUDE.md</code> (global) or a project's <code>CLAUDE.md</code> — every future session starts already knowing how you work.</p>
+        <button class="abtn" id="copy-book">⧉ Copy context book</button>
+      </div>
+      <div class="actcard">
+        <h3>② Turn repeated corrections into rules</h3>
+        <p>Anything you've corrected twice should become a standing rule, so you never have to say it again. Paste these into CLAUDE.md and edit.</p>
+        <button class="abtn" id="copy-rules">⧉ Copy rules draft from your corrections</button>
+      </div>
+      <div class="actcard">
+        <h3>③ Take it beyond Claude Code</h3>
+        <p>The book is plain markdown — paste it into claude.ai project instructions, a Cowork brief, or any agent's system prompt. Same you, everywhere.</p>
+        <button class="abtn" id="dl-book">⬇ Download context-book.md</button>
+      </div>
+      <div class="actcard">
+        <h3>④ Close the weekly loop</h3>
+        <p>Run <code>agent-manager retro --days 7 --digest</code> each week: see unfinished threads, then hand the digest to your next session as its starting brief.</p>
+        <button class="abtn" id="copy-retro">⧉ Copy retro command</button>
+      </div>
+    </div>
+    <p class="foot" id="foot"></p>
+  </section>
+
+  <div class="toast" id="toast"></div>
+  <script src="/portrait.js"></script>
+</body>
+</html>

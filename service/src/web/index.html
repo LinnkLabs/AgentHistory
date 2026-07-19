@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent History — Claude sessions</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <button id="railtoggle" class="iconbtn railtoggle" title="Projects">☰</button>
+    <div class="brand">◆ Agent&nbsp;History</div>
+    <div class="searchwrap">
+      <input id="q" class="search" type="search" placeholder="Search all sessions…  (Enter)" autocomplete="off" />
+      <select id="scope" class="scope" title="Search scope">
+        <option value="global">All projects</option>
+        <option value="project">This project</option>
+        <option value="session">This session</option>
+      </select>
+    </div>
+    <div class="targets" id="targets">
+      <button class="chip active" data-target="all">All</button>
+      <button class="chip" data-target="input">Your input</button>
+      <button class="chip" data-target="output">Claude output</button>
+      <button class="chip" data-target="commands">Commands</button>
+      <button class="chip" data-target="toolout">Tool output</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <span id="live" class="livedot" title="Live — index auto-updates"></span>
+    <button id="insights" class="navbtn" title="Retro & context book">✦ Insights</button>
+    <a id="portrait" class="navbtn portraitbtn" href="/portrait.html" title="Your Agent Portrait — the story of you × your agents">✨ Portrait</a>
+    <button id="theme" class="iconbtn" title="Toggle light / dark">☾</button>
+  </header>
+
+  <main class="layout">
+    <aside class="rail" id="rail"><!-- projects (O1) --></aside>
+    <section class="listcol">
+      <div class="listhead" id="listhead"></div>
+      <div class="list" id="list"><!-- session cards or search hits --></div>
+    </section>
+    <section class="detail" id="detail">
+      <div class="empty">Select a session, or search across everything.</div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
