@@ -5,7 +5,7 @@
 click-to-jump, and one-click resume.
 
 ```bash
-npx @getlinnk/agent-history      # or the short alias: npx agent-history-cli
+npx agent-history-cli
 ```
 
 That's it. It indexes your local session transcripts (~30s for a few hundred sessions) and opens
