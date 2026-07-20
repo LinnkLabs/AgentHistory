@@ -276,9 +276,11 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
           try { b = JSON.parse(body) || {}; } catch { /* */ }
           if (b.dryRun) return sendJSON(res, 200, { ...classifyPreview(store), running: classify.running });
           if (classify.running) return sendJSON(res, 409, { error: 'classify already running' });
+          const engine = b.engine === 'codex' ? 'codex' : 'claude';
+          store.meta('classifyEngine', engine); // remember the user's pick
           classify.running = true; classify.done = 0; classify.total = 0; classify.lastResult = null;
           runClassify(store, {
-            limit: Number(b.limit) || 25, model: b.model || '',
+            limit: Number(b.limit) || 25, model: b.model || '', engine,
             onProgress: (done, total) => { classify.done = done; classify.total = total; },
           }).then((r) => { classify.lastResult = r; classify.running = false; version++; lastChangeMs = Date.now(); })
             .catch((e) => { classify.lastResult = { error: String(e && e.message || e) }; classify.running = false; });

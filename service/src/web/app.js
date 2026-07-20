@@ -764,19 +764,39 @@ async function openRefineSheet() {
   const bd = el('div', 'sheet-backdrop');
   const sh = el('div', 'sheet');
   sh.appendChild(el('div', 'sheet-title', '✨ Refine with AI'));
+
+  // engine picker — which subscription does the work (shown only when both are signed in)
+  let engine = (pv.engine === 'codex' && pv.engines?.codex) ? 'codex' : 'claude';
+  const ENGINE_INFO = {
+    claude: { cmd: '`claude -p`', plan: 'your Claude plan usage (5-hour/weekly limits)' },
+    codex: { cmd: '`codex exec`', plan: 'your ChatGPT plan usage' },
+  };
   const p1 = el('div', 'sheet-body');
-  p1.innerHTML = `Will classify <b>${pv.toClassify} changed session${pv.toClassify === 1 ? '' : 's'}</b> using <b>your local \`claude -p\`</b>.<br>` +
-    `Head+tail excerpts only; tool outputs never leave your machine.`;
+  const meter = el('div', 'sheet-meter');
+  const renderTexts = () => {
+    p1.innerHTML = `Will classify <b>${pv.toClassify} changed session${pv.toClassify === 1 ? '' : 's'}</b> using <b>your local ${ENGINE_INFO[engine].cmd}</b>.<br>` +
+      `Head+tail excerpts only; tool outputs never leave your machine.`;
+    meter.textContent = `${Math.min(pv.toClassify, 25)} calls this run · consumes ${ENGINE_INFO[engine].plan} · shared daily cap ${pv.cap} (${pv.callsUsed} used)`;
+  };
+  if (pv.engines?.codex) {
+    const seg = el('div', 'sheet-seg');
+    for (const [key, label] of [['claude', '✱ Claude Code'], ['codex', '◎ Codex (ChatGPT)']]) {
+      const b = el('button', 'segbtn' + (engine === key ? ' active' : ''), label);
+      b.onclick = () => { engine = key; seg.querySelectorAll('.segbtn').forEach((x) => x.classList.toggle('active', x === b)); renderTexts(); };
+      seg.appendChild(b);
+    }
+    sh.appendChild(seg);
+  }
   sh.appendChild(p1);
-  const meter = el('div', 'sheet-meter', `${Math.min(pv.toClassify, 25)} calls this run · daily cap ${pv.cap} (${pv.callsUsed} used)`);
   sh.appendChild(meter);
-  sh.appendChild(el('div', 'sheet-note', 'Runs on your Claude Code login: subscription plans consume plan usage (5-hour/weekly limits), API-key logins are billed per token. Applies titles, categories and status reasons only where you haven’t set one (🔒 always wins). Cached by session — unchanged sessions are never re-sent.'));
+  renderTexts();
+  sh.appendChild(el('div', 'sheet-note', 'Both engines run on YOUR logins — subscription plans consume plan usage, API-key logins are billed per token. Applies titles, categories and status reasons only where you haven’t set one (🔒 always wins). Cached by session — unchanged sessions are never re-sent.'));
   const row = el('div', 'sheet-actions');
   const run = el('button', 'btn primary', pv.toClassify ? 'Run' : 'Nothing to classify');
   run.disabled = !pv.toClassify;
   run.onclick = async () => {
     bd.remove();
-    await fetch('/api/classify', { method: 'POST', body: JSON.stringify({}) });
+    await fetch('/api/classify', { method: 'POST', body: JSON.stringify({ engine }) });
     pollClassify();
   };
   const cancel = el('button', 'btn', 'Cancel'); cancel.onclick = () => bd.remove();

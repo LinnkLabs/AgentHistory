@@ -278,6 +278,9 @@ body.light .bcard { background: #fff; }
 .sheet-meter { font-size: 12px; font-weight: 600; color: var(--accent); background: var(--hl); border-radius: 8px; padding: 7px 11px; }
 .sheet-note { font-size: 11.5px; line-height: 1.5; color: var(--faint); }
 .sheet-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.sheet-seg { display: flex; gap: 4px; background: var(--bg3); border-radius: 9px; padding: 3px; }
+.segbtn { flex: 1; font-size: 12px; font-weight: 600; color: var(--dim); background: none; border: none; border-radius: 7px; padding: 6px 10px; cursor: pointer; }
+.segbtn.active { color: var(--fg); background: var(--bg); box-shadow: 0 1px 2px rgba(16,24,40,.12); }
 
 .bmenu { position: fixed; z-index: 100; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px;
          box-shadow: 0 8px 28px rgba(0,0,0,.25); padding: 4px; display: flex; flex-direction: column; min-width: 220px; }
