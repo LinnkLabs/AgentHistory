@@ -173,6 +173,7 @@ function bindSearch() {
     const btn = e.target.closest('.chip'); if (!btn) return;
     state.target = btn.dataset.target;
     document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c === btn));
+    syncTypesToChip(state.target);        // chips drive the transcript's type checkboxes too
     if (state.query) doSearch();          // filters the search Messages group
     if (state.sessionId) rerenderTranscript(); // filters the open transcript (works while just browsing)
   });
@@ -289,11 +290,38 @@ function addGroup(box, key, label, count, note, buildItems) {
 }
 
 // ================= TRANSCRIPT (locate + navigate) =================
-function matchesTarget(m) {
-  const t = TARGETS[state.target] || {};
-  if (t.role && m.role !== t.role) return false;
-  if (t.kind && m.kind !== t.kind) return false;
-  return true;
+// Message-type visibility (multi-select checkboxes in the transcript header).
+// This is the single filter for the transcript; the global chips sync it when clicked.
+const MSG_TYPES = [
+  { key: 'user', label: 'You' },
+  { key: 'claude', label: 'Claude' },
+  { key: 'thinking', label: 'Thinking' },
+  { key: 'tool_use', label: 'Commands' },
+  { key: 'tool_result', label: 'Tool output' },
+  { key: 'system', label: 'System' },
+];
+const ALL_TYPE_KEYS = MSG_TYPES.map((t) => t.key);
+function typeKey(m) {
+  if (m.kind === 'thinking') return 'thinking';
+  if (m.kind === 'tool_use') return 'tool_use';
+  if (m.kind === 'tool_result') return 'tool_result';
+  if (m.role === 'user') return 'user';
+  if (m.role === 'system') return 'system';
+  return 'claude';
+}
+function loadMsgTypes() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('am-msgtypes') || 'null');
+    if (Array.isArray(saved) && saved.length) return new Set(saved.filter((k) => ALL_TYPE_KEYS.includes(k)));
+  } catch { /* */ }
+  return new Set(ALL_TYPE_KEYS);
+}
+state.msgTypes = loadMsgTypes();
+function saveMsgTypes() { localStorage.setItem('am-msgtypes', JSON.stringify([...state.msgTypes])); }
+/** Global chip → checkbox sync, so the old "chip filters the transcript" behavior still holds. */
+function syncTypesToChip(target) {
+  const map = { all: ALL_TYPE_KEYS, input: ['user'], output: ['claude'], commands: ['tool_use'], toolout: ['tool_result'] };
+  if (map[target]) { state.msgTypes = new Set(map[target]); saveMsgTypes(); }
 }
 
 async function openSession(id, opts = {}) {
@@ -356,20 +384,53 @@ function renderTranscript(s, messages, targetMi) {
     actions.appendChild(nav);
   }
   head.appendChild(actions);
+
+  // message-type filter bar (checkboxes with counts; only types present in this session)
+  const counts = {};
+  for (const m of messages) counts[typeKey(m)] = (counts[typeKey(m)] || 0) + 1;
+  const typebar = el('div', 'typebar');
+  typebar.appendChild(el('span', 'tb-label', 'Show:'));
+  for (const t of MSG_TYPES) {
+    if (!counts[t.key]) continue;
+    const on = state.msgTypes.has(t.key);
+    const b = el('label', 'typechk' + (on ? ' on' : ''));
+    const cb = el('input'); cb.type = 'checkbox'; cb.checked = on;
+    cb.onchange = () => {
+      cb.checked ? state.msgTypes.add(t.key) : state.msgTypes.delete(t.key);
+      if (!state.msgTypes.size) state.msgTypes.add(t.key); // never allow an all-hidden transcript
+      saveMsgTypes();
+      rerenderTranscript({ preserveScroll: true });
+    };
+    b.appendChild(cb);
+    b.appendChild(el('span', 'tc-label', t.label));
+    b.appendChild(el('span', 'tc-count', String(counts[t.key])));
+    typebar.appendChild(b);
+  }
+  const onlyNote = state.msgTypes.size < MSG_TYPES.filter((t) => counts[t.key]).length;
+  if (onlyNote) {
+    const reset = el('button', 'btn tb-reset', 'Show all');
+    reset.onclick = () => { state.msgTypes = new Set(ALL_TYPE_KEYS); saveMsgTypes(); rerenderTranscript({ preserveScroll: true }); };
+    typebar.appendChild(reset);
+  }
+  head.appendChild(typebar);
   detail.appendChild(head);
 
   const msgs = el('div', 'msgs');
   const matchSet = new Set(state.openMatches);
-  const shown = messages.filter(matchesTarget);           // target chips filter the transcript too (no keyword needed)
+  const shown = messages.filter((m) => state.msgTypes.has(typeKey(m)));
   shown.forEach((m) => msgs.appendChild(messageRow(m, state.query, matchSet.has(m.msgIndex), m.msgIndex === targetMi)));
-  if (!shown.length) msgs.appendChild(el('div', 'empty small', `No “${TARGET_LABEL[state.target]}” messages in this session.`));
+  if (!shown.length) msgs.appendChild(el('div', 'empty small', 'All message types are hidden — re-enable one above.'));
   detail.appendChild(msgs);
   detail.scrollTop = 0;
   // defer to next frame so layout is flushed (hundreds of rows just inserted) before scrolling
   if (targetMi != null) requestAnimationFrame(() => scrollToMatch(targetMi));
 }
-function rerenderTranscript() { // re-apply target filter to the already-open transcript
-  if (state.openMeta) renderTranscript(state.openMeta, state.openMessages, null);
+function rerenderTranscript(opts = {}) { // re-apply filters to the already-open transcript
+  if (!state.openMeta) return;
+  const detail = $('#detail');
+  const keep = opts.preserveScroll ? detail.scrollTop : 0;
+  renderTranscript(state.openMeta, state.openMessages, null);
+  if (opts.preserveScroll) detail.scrollTop = keep;
 }
 
 /**
