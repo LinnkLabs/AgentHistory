@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// agent-manager — a librarian for every Claude session (organize / search / locate).
+// agenthistory — every agent session, one board (organize / search / locate / act).
 import { openStore } from '../src/store.mjs';
 import { indexAll } from '../src/indexer.mjs';
 import { indexCoworkAll } from '../src/cowork.mjs';
@@ -49,24 +49,24 @@ async function main() {
 Usage:
   agenthistory                               Index (incremental) + open the dashboard  ← default
   agenthistory index [--force]               Build/refresh the index from ~/.claude/projects
-  agent-manager status                       Show corpus stats + recent sessions
-  agent-manager search <query> [options]     Full-text search across all sessions
+  agenthistory status                       Show corpus stats + recent sessions
+  agenthistory search <query> [options]     Full-text search across all sessions
       --project <name>   --session <id>       scope
       --role user|assistant  --kind text|tool_use|tool_result|thinking   target
-  agent-manager serve [--port 4600] [--no-open]   Start the web dashboard
+  agenthistory serve [--port 4600] [--no-open]   Start the web dashboard
 
-  agent-manager persona extract [--limit 10] [--model x] [--dry-run]
+  agenthistory persona extract [--limit 10] [--model x] [--dry-run]
       Distill un-seen sessions into evidence-linked facts via YOUR authenticated \`claude\` CLI
       (agent-funded: no API key stored; durable daily call cap).
-  agent-manager persona facts [--all]        List persona facts (+receipts with --all)
-  agent-manager persona book                 Rebuild + print the context book (context-book.md)
-  agent-manager persona status               Extraction coverage, facts, signals, daily cap
-  agent-manager retro [--days 7] [--digest] [--model x]
+  agenthistory persona facts [--all]        List persona facts (+receipts with --all)
+  agenthistory persona book                 Rebuild + print the context book (context-book.md)
+  agenthistory persona status               Extraction coverage, facts, signals, daily cap
+  agenthistory retro [--days 7] [--digest] [--model x]
       What you worked on in the window; --digest adds one LLM-written narrative
 
-  agent-manager mcp                          Run the MCP server (stdio) — agents query your
+  agenthistory mcp                          Run the MCP server (stdio) — agents query your
                                              history + context book live. Register with:
-      claude mcp add -s user agent-history -- node <abs-path-to>/bin/agent-manager.mjs mcp
+      claude mcp add -s user agent-history -- npx agenthistory mcp
 `);
     return;
   }
@@ -134,7 +134,7 @@ Usage:
 
   if (cmd === 'search') {
     const q = rest.join(' ');
-    if (!q) { console.log('Usage: agent-manager search <query> [--project x] [--session id] [--role user|assistant] [--kind text|tool_use|tool_result]'); store.close(); return; }
+    if (!q) { console.log('Usage: agenthistory search <query> [--project x] [--session id] [--role user|assistant] [--kind text|tool_use|tool_result]'); store.close(); return; }
     const scope = flag('session', null) ? 'session' : flag('project', null) ? 'project' : 'global';
     const scopeId = flag('session', null) || flag('project', null) || null;
     const hits = store.search({ q, scope, scopeId, role: flag('role', null), kind: flag('kind', null), limit: 40 });
@@ -181,7 +181,7 @@ Usage:
 
     if (sub === 'facts') {
       const facts = store.listFacts();
-      if (!facts.length) { console.log('No facts yet. Run: agent-manager persona extract'); store.close(); return; }
+      if (!facts.length) { console.log('No facts yet. Run: agenthistory persona extract'); store.close(); return; }
       for (const f of facts) {
         const sessions = JSON.parse(f.sessionsJson || '[]');
         console.log(`${f.status === 'active' ? '●' : '○'} [${f.kind}] ${f.statement}   (${f.observations}× · ${sessions.length} sessions · ${f.key})`);
@@ -253,7 +253,7 @@ Usage:
     return; // server keeps process alive
   }
 
-  console.log(`Unknown command: ${cmd}. Try: agent-manager help`);
+  console.log(`Unknown command: ${cmd}. Try: agenthistory help`);
   store.close();
 }
 

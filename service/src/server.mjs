@@ -117,11 +117,26 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
   // one background classify run at a time (Refine with AI)
   const classify = { running: false, done: 0, total: 0, lastResult: null };
 
+  // The server binds to 127.0.0.1, but that alone doesn't stop two browser-borne attacks:
+  //  - DNS rebinding: an attacker domain resolving to 127.0.0.1 would make our transcripts
+  //    same-origin-readable by their page → validate the Host header.
+  //  - CSRF: any webpage can fire "simple" cross-origin POSTs at localhost (e.g. to burn the
+  //    user's classify quota) → reject state-changing requests with a foreign Origin.
+  const LOCAL_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1']);
+  const isLocalHostname = (h) => LOCAL_HOSTS.has(String(h || '').toLowerCase());
+
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const p = url.pathname;
     const qp = url.searchParams;
     try {
+      const hostName = String(req.headers.host || '').replace(/:\d+$/, '');
+      if (!isLocalHostname(hostName)) { res.writeHead(403); res.end('forbidden: bad host'); return; }
+      if (req.method !== 'GET' && req.headers.origin) {
+        let originHost = '';
+        try { originHost = new URL(req.headers.origin).hostname; } catch { /* malformed → reject */ }
+        if (!isLocalHostname(originHost)) { res.writeHead(403); res.end('forbidden: cross-origin write'); return; }
+      }
       // ---- API ----
       if (p === '/favicon.ico') { res.writeHead(204); res.end(); return; }
       if (p === '/api/version') return sendJSON(res, 200, { version, lastChangeMs });
@@ -342,7 +357,7 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
       if (p === '/' ) return sendFile(res, path.join(WEB_DIR, 'index.html'));
       const safe = path.normalize(p).replace(/^(\.\.[/\\])+/, '');
       const file = path.join(WEB_DIR, safe);
-      if (file.startsWith(WEB_DIR) && fs.existsSync(file) && fs.statSync(file).isFile()) return sendFile(res, file);
+      if (file.startsWith(WEB_DIR + path.sep) && fs.existsSync(file) && fs.statSync(file).isFile()) return sendFile(res, file);
 
       res.writeHead(404); res.end('not found');
     } catch (e) {
@@ -371,7 +386,7 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
 
   const url = `http://127.0.0.1:${port}`;
   const s = store.stats();
-  console.log(`\n  agent-manager  ·  ${s.sessions} sessions · ${s.projects} projects · ${s.messages} messages`);
+  console.log(`\n  agenthistory  ·  ${s.sessions} sessions · ${s.projects} projects · ${s.messages} messages`);
   console.log(`  ▶ ${url}  ${watch ? '(live)' : ''}\n  (Ctrl+C to stop)\n`);
   if (open) openBrowser(url);
   return { server, url };
