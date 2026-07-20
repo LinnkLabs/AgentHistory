@@ -60,6 +60,7 @@ body {
 .badge { font-size: 10px; padding: 1px 6px; border-radius: 5px; background: var(--bg3); color: var(--dim); border: 1px solid var(--line); }
 .badge.ide { color: var(--accent); }
 .badge.cowork { color: var(--toolout); border-color: var(--toolout); }
+.badge.codex { color: var(--b-codex); border-color: var(--b-codex); }
 
 /* Search hits */
 .hit { padding: 9px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }

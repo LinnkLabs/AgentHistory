@@ -142,7 +142,7 @@ function sessionCard(s) {
   meta.appendChild(el('span', null, '· ' + s.msgCount + ' msg'));
   if (s.gitBranch) meta.appendChild(el('span', null, '· ⎇ ' + s.gitBranch));
   const srcLabel = s.source === 'desktop-cowork' ? 'cowork' : (s.source || 'cli');
-  const srcClass = s.source === 'desktop-cowork' ? ' cowork' : (s.source === 'ide' ? ' ide' : '');
+  const srcClass = s.source === 'desktop-cowork' ? ' cowork' : (s.source === 'ide' ? ' ide' : (s.source === 'codex' ? ' codex' : ''));
   meta.appendChild(el('span', 'badge' + srcClass, srcLabel));
   if (s.subagentCount) meta.appendChild(el('span', 'badge', s.subagentCount + ' sub'));
   c.appendChild(meta);

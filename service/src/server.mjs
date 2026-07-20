@@ -8,6 +8,7 @@ import os from 'node:os';
 import { openStore } from './store.mjs';
 import { reconcile } from './indexer.mjs';
 import { indexCoworkAll } from './cowork.mjs';
+import { indexCodexAll } from './codex.mjs';
 import { retroReport, readBook, buildBook, extractSessions, callsUsedToday, DAILY_CALL_LIMIT } from './persona.mjs';
 import { buildBoard, pidAlive } from './taskboard.mjs';
 
@@ -305,7 +306,8 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
     timer = setInterval(() => {
       try {
         const r = reconcile(store);            // byte-offset tail of grown files + pick up new sessions
-        if (r.changed) { version++; lastChangeMs = Date.now(); }
+        const cx = indexCodexAll(store);       // codex: cheap stat-skip pass (also feeds the board's recency-based Active)
+        if (r.changed || cx.indexed) { version++; lastChangeMs = Date.now(); }
       } catch { /* ignore a bad tick */ }
     }, 5000);
     server.on('close', () => clearInterval(timer));

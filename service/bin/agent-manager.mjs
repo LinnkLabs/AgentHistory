@@ -3,6 +3,7 @@
 import { openStore } from '../src/store.mjs';
 import { indexAll } from '../src/indexer.mjs';
 import { indexCoworkAll } from '../src/cowork.mjs';
+import { indexCodexAll } from '../src/codex.mjs';
 
 const argv = process.argv.slice(2);
 const cmd = argv[0] || 'help';
@@ -86,6 +87,8 @@ Usage:
     // M4: desktop Cowork (optional, best-effort)
     const cw = indexCoworkAll(store);
     if (cw.total) process.stdout.write(`  desktop Cowork: ${cw.indexed} with transcripts, ${cw.metadataOnly} metadata-only (encrypted/migrated)\n`);
+    const cx = indexCodexAll(store, { force });
+    if (cx.total) process.stdout.write(`  Codex: ${cx.indexed} indexed, ${cx.skipped} unchanged\n`);
     const s = store.stats();
     process.stdout.write(`  ${s.sessions} sessions · ${s.projects} projects · ${s.messages} messages · ${fmtBytes(s.bytes)} of transcripts\n`);
     store.close();
