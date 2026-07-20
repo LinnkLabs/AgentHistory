@@ -1,0 +1,20 @@
+{
+  "name": "agent-history-cli",
+  "version": "0.1.2",
+  "description": "Convenience alias for @getlinnk/agent-history — every agent session, one board. Run: npx agent-history-cli",
+  "type": "module",
+  "bin": {
+    "agent-history-cli": "cli.mjs",
+    "agent-history": "cli.mjs",
+    "agenthistory": "cli.mjs"
+  },
+  "files": ["cli.mjs", "README.md"],
+  "dependencies": {
+    "@getlinnk/agent-history": "^0.1.1"
+  },
+  "engines": { "node": ">=20" },
+  "repository": { "type": "git", "url": "git+https://github.com/LinnkLabs/AgentHistory.git" },
+  "homepage": "https://github.com/LinnkLabs/AgentHistory#readme",
+  "keywords": ["claude-code", "codex", "agent", "session-manager", "task-board", "search"],
+  "license": "MIT"
+}
