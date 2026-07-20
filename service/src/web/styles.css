@@ -189,7 +189,20 @@ body {
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--bg3); border: 1px solid var(--accent); color: var(--fg); padding: 8px 16px; border-radius: 8px; opacity: 0; transition: opacity .2s; z-index: 10; }
 .toast.show { opacity: 1; }
 .showmore { color: var(--accent); cursor: pointer; font-size: 12px; }
-::-webkit-scrollbar { width: 10px; height: 10px; } ::-webkit-scrollbar-thumb { background: #2a3140; border-radius: 6px; } ::-webkit-scrollbar-track { background: transparent; }
+/* slim, hover-revealed, theme-aware scrollbars */
+* { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+*:hover { scrollbar-color: var(--line) transparent; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: transparent; border-radius: 8px; }
+:hover::-webkit-scrollbar-thumb { background: var(--line); }
+::-webkit-scrollbar-thumb:hover { background: var(--faint); }
+
+/* draggable pane resizers */
+.resizer { flex: 0 0 5px; cursor: col-resize; margin-left: -5px; z-index: 5; background: transparent; transition: background .12s; }
+.resizer:hover, body.resizing .resizer.dragging { background: var(--accent); opacity: .35; }
+body.resizing { cursor: col-resize; user-select: none; }
+@media (max-width: 720px) { .resizer { display: none; } }
 
 /* Insights (retro + context book) */
 .insights { padding-bottom: 24px; }

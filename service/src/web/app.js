@@ -715,8 +715,36 @@ document.addEventListener('click', (e) => {
   }
 }, true);
 
+// draggable pane resizers (persisted widths)
+function initResizers() {
+  const rail = $('#rail'), listcol = document.querySelector('.listcol');
+  const saved = (() => { try { return JSON.parse(localStorage.getItem('am-panes') || '{}'); } catch { return {}; } })();
+  if (saved.rail) rail.style.flexBasis = saved.rail + 'px';
+  if (saved.list) listcol.style.flexBasis = saved.list + 'px';
+  bindResizer($('#rz-rail'), rail, 150, 420, 'rail');
+  bindResizer($('#rz-list'), listcol, 260, 760, 'list');
+}
+function bindResizer(rz, pane, min, max, key) {
+  if (!rz) return;
+  rz.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const startX = e.clientX, startW = pane.getBoundingClientRect().width;
+    document.body.classList.add('resizing'); rz.classList.add('dragging');
+    const move = (ev) => { pane.style.flexBasis = Math.min(max, Math.max(min, startW + ev.clientX - startX)) + 'px'; };
+    const up = () => {
+      document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
+      document.body.classList.remove('resizing'); rz.classList.remove('dragging');
+      let s = {}; try { s = JSON.parse(localStorage.getItem('am-panes') || '{}'); } catch { /* */ }
+      s[key] = Math.round(pane.getBoundingClientRect().width);
+      localStorage.setItem('am-panes', JSON.stringify(s));
+    };
+    document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
+  });
+}
+
 initTheme();
 initNarrow();
+initResizers();
 bindSearch();
 $('#insights').addEventListener('click', openInsights);
 portraitize($('#portrait'));
