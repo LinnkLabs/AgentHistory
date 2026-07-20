@@ -7,7 +7,7 @@ import { indexCodexAll } from '../src/codex.mjs';
 import { isCustomTree } from '../src/paths.mjs';
 
 const argv = process.argv.slice(2);
-// No command (or only flags) = "up": refresh the index, then open the dashboard. `npx agenthistory` just works.
+// No command (or only flags) = "up": refresh the index, then open the dashboard. `npx agent-history-cli` just works.
 const hasCmd = argv[0] && !argv[0].startsWith('--');
 const cmd = hasCmd ? argv[0] : 'up';
 
@@ -47,26 +47,26 @@ async function main() {
     console.log(`agenthistory — every agent session, one board (Claude Code + Codex, 100% local)
 
 Usage:
-  agenthistory                               Index (incremental) + open the dashboard  ← default
-  agenthistory index [--force]               Build/refresh the index from ~/.claude/projects
-  agenthistory status                       Show corpus stats + recent sessions
-  agenthistory search <query> [options]     Full-text search across all sessions
+  agent-history-cli                               Index (incremental) + open the dashboard  ← default
+  agent-history-cli index [--force]               Build/refresh the index from ~/.claude/projects
+  agent-history-cli status                       Show corpus stats + recent sessions
+  agent-history-cli search <query> [options]     Full-text search across all sessions
       --project <name>   --session <id>       scope
       --role user|assistant  --kind text|tool_use|tool_result|thinking   target
-  agenthistory serve [--port 4600] [--no-open]   Start the web dashboard
+  agent-history-cli serve [--port 4600] [--no-open]   Start the web dashboard
 
-  agenthistory persona extract [--limit 10] [--model x] [--dry-run]
+  agent-history-cli persona extract [--limit 10] [--model x] [--dry-run]
       Distill un-seen sessions into evidence-linked facts via YOUR authenticated \`claude\` CLI
       (agent-funded: no API key stored; durable daily call cap).
-  agenthistory persona facts [--all]        List persona facts (+receipts with --all)
-  agenthistory persona book                 Rebuild + print the context book (context-book.md)
-  agenthistory persona status               Extraction coverage, facts, signals, daily cap
-  agenthistory retro [--days 7] [--digest] [--model x]
+  agent-history-cli persona facts [--all]        List persona facts (+receipts with --all)
+  agent-history-cli persona book                 Rebuild + print the context book (context-book.md)
+  agent-history-cli persona status               Extraction coverage, facts, signals, daily cap
+  agent-history-cli retro [--days 7] [--digest] [--model x]
       What you worked on in the window; --digest adds one LLM-written narrative
 
-  agenthistory mcp                          Run the MCP server (stdio) — agents query your
+  agent-history-cli mcp                          Run the MCP server (stdio) — agents query your
                                              history + context book live. Register with:
-      claude mcp add -s user agent-history -- npx agenthistory mcp
+      claude mcp add -s user agent-history -- npx agent-history-cli mcp
 `);
     return;
   }
@@ -134,7 +134,7 @@ Usage:
 
   if (cmd === 'search') {
     const q = rest.join(' ');
-    if (!q) { console.log('Usage: agenthistory search <query> [--project x] [--session id] [--role user|assistant] [--kind text|tool_use|tool_result]'); store.close(); return; }
+    if (!q) { console.log('Usage: agent-history-cli search <query> [--project x] [--session id] [--role user|assistant] [--kind text|tool_use|tool_result]'); store.close(); return; }
     const scope = flag('session', null) ? 'session' : flag('project', null) ? 'project' : 'global';
     const scopeId = flag('session', null) || flag('project', null) || null;
     const hits = store.search({ q, scope, scopeId, role: flag('role', null), kind: flag('kind', null), limit: 40 });
@@ -181,7 +181,7 @@ Usage:
 
     if (sub === 'facts') {
       const facts = store.listFacts();
-      if (!facts.length) { console.log('No facts yet. Run: agenthistory persona extract'); store.close(); return; }
+      if (!facts.length) { console.log('No facts yet. Run: agent-history-cli persona extract'); store.close(); return; }
       for (const f of facts) {
         const sessions = JSON.parse(f.sessionsJson || '[]');
         console.log(`${f.status === 'active' ? '●' : '○'} [${f.kind}] ${f.statement}   (${f.observations}× · ${sessions.length} sessions · ${f.key})`);
@@ -253,7 +253,7 @@ Usage:
     return; // server keeps process alive
   }
 
-  console.log(`Unknown command: ${cmd}. Try: agenthistory help`);
+  console.log(`Unknown command: ${cmd}. Try: agent-history-cli help`);
   store.close();
 }
 

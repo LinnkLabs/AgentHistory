@@ -5,7 +5,7 @@
 click-to-jump, and one-click resume.
 
 ```bash
-npx agenthistory
+npx agent-history-cli
 ```
 
 That's it. It indexes your local session transcripts (~30s for a few hundred sessions) and opens
@@ -63,21 +63,23 @@ searchable forever.
 ## CLI
 
 ```
-agenthistory                     index + open the dashboard (default)
-agenthistory index [--force]     build/refresh the index
-agenthistory status              corpus stats + recent sessions
-agenthistory search <query>      full-text search (--project, --role, --kind filters)
-agenthistory serve [--port N]    dashboard only
-agenthistory retro [--days 7]    what you worked on
-agenthistory persona …           the context-book layer (see --help)
-agenthistory mcp                 MCP server: give YOUR agents your history + context book
+agent-history-cli                     index + open the dashboard (default)
+agent-history-cli index [--force]     build/refresh the index
+agent-history-cli status              corpus stats + recent sessions
+agent-history-cli search <query>      full-text search (--project, --role, --kind filters)
+agent-history-cli serve [--port N]    dashboard only
+agent-history-cli retro [--days 7]    what you worked on
+agent-history-cli persona …           the context-book layer (see --help)
+agent-history-cli mcp                 MCP server: give YOUR agents your history + context book
 ```
+
+(Installed globally, the short aliases `agenthistory` and `agent-history` work too.)
 
 The MCP server means your agents can use this too — Claude Code (or any MCP client) can search
 your past sessions and read your context book live:
 
 ```bash
-claude mcp add -s user agent-history -- npx agenthistory mcp
+claude mcp add -s user agent-history -- npx agent-history-cli mcp
 ```
 
 ## VS Code / Cursor extension
@@ -91,7 +93,7 @@ and: `code --install-extension agent-history-*.vsix`
 - **`better-sqlite3` build error on install** — your Node version may lack a prebuilt binary.
   Use Node 20/22 LTS (`nvm use 20`) and retry. (WASM fallback is on the roadmap.)
 - **Empty board / no sessions** — check that `~/.claude/projects` exists and has `.jsonl` files;
-  run `agenthistory index --force` and watch for errors.
+  run `agent-history-cli index --force` and watch for errors.
 - **The transcript format is Anthropic-internal and changes** — the parsers are
   skip-on-unknown-type by design; if a new Claude Code release breaks parsing, `index --force`
   after updating usually fixes it. Please file an issue with the CLI version.
@@ -102,7 +104,7 @@ Want to try it without your own sessions, or take screenshots safely?
 
 ```bash
 node service/scripts/make-demo.mjs /tmp/ah-demo
-CLAUDE_TRANSCRIPT_PATH=/tmp/ah-demo/projects AGENT_MANAGER_HOME=/tmp/ah-demo/store npx agenthistory
+CLAUDE_TRANSCRIPT_PATH=/tmp/ah-demo/projects AGENT_MANAGER_HOME=/tmp/ah-demo/store npx agent-history-cli
 ```
 
 ## License
