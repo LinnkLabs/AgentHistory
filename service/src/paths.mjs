@@ -10,6 +10,11 @@ export function claudeProjectsDir() {
   return process.env.CLAUDE_TRANSCRIPT_PATH || path.join(HOME, '.claude', 'projects');
 }
 
+/** True when pointing at a custom transcript tree (demo/tests) — machine-wide sources (Cowork/Codex) stay out. */
+export function isCustomTree() {
+  return !!process.env.CLAUDE_TRANSCRIPT_PATH;
+}
+
 /** Live process registry: ~/.claude/sessions/<pid>.json (Phase 2 live-state; enumerated read-only here). */
 export function sessionsRegistryDir() {
   return path.join(HOME, '.claude', 'sessions');

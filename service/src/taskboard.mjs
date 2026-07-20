@@ -8,6 +8,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { isCustomTree } from './paths.mjs';
 
 export function pidAlive(pid) {
   try { process.kill(pid, 0); return true; } catch (e) { return e && e.code === 'EPERM'; }
@@ -76,7 +77,8 @@ const PRIORITY = { active: 0, waiting: 1, inprogress: 2, recurring: 3, paused: 4
 
 /** Assemble the Now board. Sessions sharing a taskId (manual merge) collapse into one card. */
 export function buildBoard(store, { project } = {}) {
-  const live = liveClaudeSessions();
+  // custom transcript trees (demo/tests) must not see this machine's real process registry
+  const live = isCustomTree() ? new Map() : liveClaudeSessions();
   const now = Date.now();
 
   // 1) per-session inference, grouped by taskId

@@ -4,15 +4,18 @@ import { openStore } from '../src/store.mjs';
 import { indexAll } from '../src/indexer.mjs';
 import { indexCoworkAll } from '../src/cowork.mjs';
 import { indexCodexAll } from '../src/codex.mjs';
+import { isCustomTree } from '../src/paths.mjs';
 
 const argv = process.argv.slice(2);
-const cmd = argv[0] || 'help';
+// No command (or only flags) = "up": refresh the index, then open the dashboard. `npx agenthistory` just works.
+const hasCmd = argv[0] && !argv[0].startsWith('--');
+const cmd = hasCmd ? argv[0] : 'up';
 
 // Flags that consume the following token as a value; everything else after --x is boolean true.
 const VALUE_FLAGS = new Set(['project', 'session', 'role', 'kind', 'port', 'limit', 'model', 'days']);
 const opts = {};
 const rest = []; // positionals (e.g. the search query words)
-for (let i = 1; i < argv.length; i++) {
+for (let i = hasCmd ? 1 : 0; i < argv.length; i++) {
   const a = argv[i];
   if (a.startsWith('--')) {
     const name = a.slice(2);
@@ -41,10 +44,11 @@ function rel(ms) {
 
 async function main() {
   if (cmd === 'help' || cmd === '--help' || cmd === '-h') {
-    console.log(`agent-manager — organize, search, and locate your Claude sessions
+    console.log(`agenthistory — every agent session, one board (Claude Code + Codex, 100% local)
 
 Usage:
-  agent-manager index [--force]              Build/refresh the index from ~/.claude/projects
+  agenthistory                               Index (incremental) + open the dashboard  ← default
+  agenthistory index [--force]               Build/refresh the index from ~/.claude/projects
   agent-manager status                       Show corpus stats + recent sessions
   agent-manager search <query> [options]     Full-text search across all sessions
       --project <name>   --session <id>       scope
@@ -69,6 +73,21 @@ Usage:
 
   const store = openStore();
 
+  if (cmd === 'up') {
+    // first-run friendly default: incremental index (fast when nothing changed), then serve
+    process.stdout.write('Refreshing index… ');
+    const r = indexAll(store, {});
+    const cw = isCustomTree() ? { total: 0 } : indexCoworkAll(store);
+    const cx = isCustomTree() ? { total: 0 } : indexCodexAll(store, {});
+    const s = store.stats();
+    process.stdout.write(`${r.indexed + (cw.indexed || 0) + (cx.indexed || 0)} new/changed · ${s.sessions} sessions · ${s.projects} projects\n`);
+    store.close();
+    const { serve } = await import('../src/server.mjs');
+    const port = Number(flag('port', 4600)) || 4600;
+    await serve({ port, open: flag('no-open', false) !== true, watch: flag('no-watch', false) !== true });
+    return;
+  }
+
   if (cmd === 'index') {
     const force = !!flag('force', false);
     process.stdout.write('Indexing ~/.claude/projects …\n');
@@ -85,9 +104,9 @@ Usage:
     });
     process.stdout.write(`\r✓ Indexed ${r.indexed} new/changed, skipped ${r.skipped} (${(r.elapsedMs / 1000).toFixed(1)}s)          \n`);
     // M4: desktop Cowork (optional, best-effort)
-    const cw = indexCoworkAll(store);
+    const cw = isCustomTree() ? { total: 0 } : indexCoworkAll(store);
     if (cw.total) process.stdout.write(`  desktop Cowork: ${cw.indexed} with transcripts, ${cw.metadataOnly} metadata-only (encrypted/migrated)\n`);
-    const cx = indexCodexAll(store, { force });
+    const cx = isCustomTree() ? { total: 0 } : indexCodexAll(store, { force });
     if (cx.total) process.stdout.write(`  Codex: ${cx.indexed} indexed, ${cx.skipped} unchanged\n`);
     const s = store.stats();
     process.stdout.write(`  ${s.sessions} sessions · ${s.projects} projects · ${s.messages} messages · ${fmtBytes(s.bytes)} of transcripts\n`);

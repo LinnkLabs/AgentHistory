@@ -1,14 +1,17 @@
 {
-  "name": "agent-manager",
+  "name": "agenthistory",
   "version": "0.1.0",
-  "description": "A local-first librarian for every Claude session: organize, search, and locate across the CLI, the VS Code/Cursor extension, and the Claude desktop app.",
+  "description": "Every agent session, one board. A local-first task board + searchable librarian for your Claude Code and Codex sessions — live status, full-text search over every transcript, click-to-jump, and one-click resume.",
   "type": "module",
   "bin": {
-    "agent-manager": "bin/agent-manager.mjs"
+    "agenthistory": "bin/agent-manager.mjs",
+    "agent-history": "bin/agent-manager.mjs"
   },
   "files": [
     "bin",
-    "src"
+    "src",
+    "scripts",
+    "README.md"
   ],
   "scripts": {
     "index": "node bin/agent-manager.mjs index",
@@ -21,13 +24,25 @@
   "dependencies": {
     "better-sqlite3": "^12.2.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LinnkLabs/AgentHistory.git"
+  },
+  "homepage": "https://github.com/LinnkLabs/AgentHistory#readme",
+  "bugs": {
+    "url": "https://github.com/LinnkLabs/AgentHistory/issues"
+  },
   "keywords": [
-    "claude",
     "claude-code",
+    "codex",
+    "agent",
     "session-manager",
-    "agent-manager",
+    "task-board",
+    "kanban",
     "transcript",
-    "search"
+    "history",
+    "search",
+    "local-first"
   ],
   "license": "MIT"
 }

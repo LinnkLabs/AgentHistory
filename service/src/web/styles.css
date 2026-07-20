@@ -200,6 +200,7 @@ body.light { --b-active: #22c55e; --b-wait: #e8a13c; --b-inprog: #3b82f6; --b-re
 body[data-view="now"] #targets, body[data-view="now"] #scope, body[data-view="now"] #railtoggle { display: none; }
 
 .boardview { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+.boardview[hidden] { display: none; } /* class display would otherwise beat the UA [hidden] rule */
 .boardbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px 2px; flex: 0 0 auto; }
 .bmeta { font-size: 11px; color: var(--faint); }
 .bcols { display: flex; gap: 10px; padding: 10px 16px; align-items: flex-start; overflow: auto; flex: 1 1 auto; min-height: 0; }

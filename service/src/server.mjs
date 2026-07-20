@@ -9,6 +9,7 @@ import { openStore } from './store.mjs';
 import { reconcile } from './indexer.mjs';
 import { indexCoworkAll } from './cowork.mjs';
 import { indexCodexAll } from './codex.mjs';
+import { isCustomTree } from './paths.mjs';
 import { retroReport, readBook, buildBook, extractSessions, callsUsedToday, DAILY_CALL_LIMIT } from './persona.mjs';
 import { buildBoard, pidAlive } from './taskboard.mjs';
 import { runClassify, classifyPreview } from './classify.mjs';
@@ -355,13 +356,13 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
   });
 
   // M5: keep the desktop-Cowork surface fresh at startup, then live-watch the CLI/IDE sessions.
-  try { indexCoworkAll(store); } catch { /* best-effort */ }
+  try { if (!isCustomTree()) indexCoworkAll(store); } catch { /* best-effort */ }
   let timer = null;
   if (watch) {
     timer = setInterval(() => {
       try {
         const r = reconcile(store);            // byte-offset tail of grown files + pick up new sessions
-        const cx = indexCodexAll(store);       // codex: cheap stat-skip pass (also feeds the board's recency-based Active)
+        const cx = isCustomTree() ? { indexed: 0 } : indexCodexAll(store);       // codex: cheap stat-skip pass (also feeds the board's recency-based Active)
         if (r.changed || cx.indexed) { version++; lastChangeMs = Date.now(); }
       } catch { /* ignore a bad tick */ }
     }, 5000);
