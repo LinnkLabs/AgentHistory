@@ -770,7 +770,7 @@ async function openRefineSheet() {
   sh.appendChild(p1);
   const meter = el('div', 'sheet-meter', `${Math.min(pv.toClassify, 25)} calls this run · daily cap ${pv.cap} (${pv.callsUsed} used)`);
   sh.appendChild(meter);
-  sh.appendChild(el('div', 'sheet-note', 'Applies titles, categories and status reasons only where you haven’t set one (🔒 always wins). Cached by session — unchanged sessions are never re-sent.'));
+  sh.appendChild(el('div', 'sheet-note', 'Runs on your Claude Code login: subscription plans consume plan usage (5-hour/weekly limits), API-key logins are billed per token. Applies titles, categories and status reasons only where you haven’t set one (🔒 always wins). Cached by session — unchanged sessions are never re-sent.'));
   const row = el('div', 'sheet-actions');
   const run = el('button', 'btn primary', pv.toClassify ? 'Run' : 'Nothing to classify');
   run.disabled = !pv.toClassify;
