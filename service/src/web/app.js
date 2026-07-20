@@ -159,7 +159,11 @@ function bindSearch() {
     clearTimeout(deb);
     const v = q.value.trim();
     if (!v) { exitSearch(); return; }
-    deb = setTimeout(() => { state.query = v; doSearch(); }, 220); // live search fixes "nothing happens on typing"
+    deb = setTimeout(() => {
+      state.query = v;
+      if (document.body.dataset.view === 'now') switchView('sessions'); // search always lands in Sessions
+      doSearch();
+    }, 220); // live search fixes "nothing happens on typing"
   });
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(deb); state.query = q.value.trim(); if (state.query) doSearch(); } });
   $('#scope').addEventListener('change', () => {
@@ -715,6 +719,170 @@ document.addEventListener('click', (e) => {
   }
 }, true);
 
+// ================= NOW BOARD (task view) =================
+const BOARD_COLS = [
+  { key: 'active', label: 'Active', cls: 'c-active', hint: 'Detected from live Claude processes — drag is disabled here.' },
+  { key: 'waiting', label: 'Waiting on you', cls: 'c-waiting', hint: 'Nothing needs you. Nice.' },
+  { key: 'inprogress', label: 'In progress', cls: 'c-inprog', hint: 'No recent work in flight.' },
+  { key: 'recurring', label: 'Recurring', cls: 'c-recur', hint: 'No scheduled/loop sessions.' },
+  { key: 'paused', label: 'Paused', cls: 'c-paused', hint: 'Drag here to pause.' },
+];
+const board = {
+  timer: null, project: localStorage.getItem('am-board-project') || '',
+  dismissed: new Set(JSON.parse(localStorage.getItem('am-done-dismissed') || '[]')),
+  doneOpen: false,
+};
+
+function switchView(v) {
+  state.view = v; localStorage.setItem('am-view', v);
+  document.body.dataset.view = v;
+  $('#boardview').hidden = v !== 'now';
+  document.querySelector('main.layout').style.display = v === 'now' ? 'none' : '';
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.view === v));
+  clearInterval(board.timer);
+  if (v === 'now') { refreshBoard(); board.timer = setInterval(refreshBoard, 5000); }
+}
+function initTabs() {
+  $('#tabs').addEventListener('click', (e) => {
+    const t = e.target.closest('.tab'); if (t) switchView(t.dataset.view);
+  });
+  $('#bproject').addEventListener('change', () => {
+    board.project = $('#bproject').value; localStorage.setItem('am-board-project', board.project); refreshBoard();
+  });
+  switchView(localStorage.getItem('am-view') || 'now');
+}
+
+async function refreshBoard() {
+  let b;
+  try { b = await getJSON('/api/board' + (board.project ? '?project=' + encodeURIComponent(board.project) : '')); }
+  catch { return; }
+  renderBoard(b);
+}
+
+function renderBoard(b) {
+  // project filter options (from the overview data when loaded)
+  const sel = $('#bproject');
+  if (state.projects.length && sel.options.length <= 1) {
+    for (const p of state.projects) { const o = document.createElement('option'); o.value = o.textContent = p.project || '(unknown)'; sel.appendChild(o); }
+    sel.value = board.project;
+  }
+  $('#bmeta').textContent = `${b.liveCount} live process${b.liveCount === 1 ? '' : 'es'} · ${b.idleCount} idle in Sessions · reconciled just now`;
+
+  const cols = $('#bcols'); cols.innerHTML = '';
+  for (const col of BOARD_COLS) {
+    const cards = b.columns[col.key] || [];
+    const lane = el('div', 'bcol ' + col.cls);
+    lane.dataset.status = col.key;
+    const head = el('div', 'bcol-h');
+    head.appendChild(el('span', 'bdot', ''));
+    head.appendChild(el('span', 'bcol-label', col.label));
+    head.appendChild(el('span', 'bcol-count', String(cards.length)));
+    lane.appendChild(head);
+    const body = el('div', 'bcol-body');
+    cards.slice(0, 30).forEach((c) => body.appendChild(boardCard(c)));
+    if (cards.length > 30) body.appendChild(el('div', 'bmore', `show all ${cards.length} ↓`)).onclick = function () {
+      body.innerHTML = ''; cards.forEach((c) => body.appendChild(boardCard(c)));
+    };
+    if (!cards.length) body.appendChild(el('div', 'bempty', col.hint));
+    lane.appendChild(body);
+    bindDrop(lane, col.key);
+    cols.appendChild(lane);
+  }
+
+  // Recently-done strip
+  const doneBar = $('#bdone'); doneBar.hidden = false; doneBar.innerHTML = '';
+  const strip = el('div', 'bdone-bar');
+  strip.appendChild(el('span', 'bdone-label', '✅ Recently done'));
+  strip.appendChild(el('span', 'bcol-count', `${b.done.length} · 14d`));
+  strip.appendChild(el('span', 'bdone-titles', b.done.slice(0, 3).map((c) => c.title).join(' · ') + (b.done.length > 3 ? ` · +${b.done.length - 3}` : '') || '—'));
+  const exp = el('button', 'btn bdone-exp', board.doneOpen ? 'collapse ⌃' : 'expand ⌄');
+  exp.onclick = () => { board.doneOpen = !board.doneOpen; renderBoard(b); };
+  strip.appendChild(exp);
+  doneBar.appendChild(strip);
+  if (board.doneOpen && b.done.length) {
+    const grid = el('div', 'bdone-grid');
+    b.done.forEach((c) => grid.appendChild(boardCard(c)));
+    doneBar.appendChild(grid);
+  }
+  bindDrop(doneBar, 'done');
+}
+
+function boardCard(c) {
+  const card = el('div', 'bcard' + (c.status === 'waiting' ? ' waiting' : ''));
+  card.draggable = true; card.dataset.sid = c.sessionId;
+  card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', c.sessionId); card.classList.add('dragging'); });
+  card.addEventListener('dragend', () => card.classList.remove('dragging'));
+
+  const h = el('div', 'bcard-h');
+  if (c.status === 'active') h.appendChild(el('span', 'bpulse', ''));
+  h.appendChild(el('span', 'bcard-title', c.title));
+  if (c.locked) h.appendChild(el('span', 'block', '🔒 ' + (c.status === 'paused' ? '⏸' : c.status)));
+  card.appendChild(h);
+
+  const meta = el('div', 'bcard-proj');
+  meta.appendChild(el('span', null, c.project || '(unknown)'));
+  const srcLabel = c.source === 'desktop-cowork' ? 'cowork' : (c.source === 'ide' ? 'claude' : c.source || 'claude');
+  meta.appendChild(el('span', 'agent a-' + (c.source === 'desktop-cowork' ? 'cowork' : c.source === 'codex' ? 'codex' : 'claude'), srcLabel));
+  card.appendChild(meta);
+
+  if (c.reason) card.appendChild(el('div', 'bcard-reason', c.reason));
+  const info = el('div', 'bcard-info',
+    `${rel(c.lastActivityMs)}${c.model ? ' · ' + shortModel(c.model) : ''} · ${c.msgCount} msg${c.gitBranch ? ' · ⎇ ' + c.gitBranch : ''}`);
+  card.appendChild(info);
+
+  if (c.doneSuggested && !board.dismissed.has(c.sessionId)) {
+    const sug = el('div', 'bsuggest');
+    sug.appendChild(el('span', null, 'Looks done — mark ✅?'));
+    const yes = el('button', 'btn bs-yes', '✓'); yes.onclick = () => setTask(c.sessionId, { status: 'done' });
+    const no = el('button', 'btn bs-no', '✕'); no.onclick = () => { board.dismissed.add(c.sessionId); localStorage.setItem('am-done-dismissed', JSON.stringify([...board.dismissed])); refreshBoard(); };
+    sug.appendChild(yes); sug.appendChild(no);
+    card.appendChild(sug);
+  }
+
+  const acts = el('div', 'bcard-acts');
+  const open = el('button', 'btn primary', '✱ Open'); open.onclick = () => openInClaudeCode({ sessionId: c.sessionId, cwd: c.cwd });
+  const tr = el('button', 'btn', '☰ Transcript'); tr.onclick = () => { switchView('sessions'); openSession(c.sessionId); };
+  const more = el('button', 'btn', '⋯'); more.onclick = (e) => cardMenu(e, c);
+  acts.appendChild(open); acts.appendChild(tr); acts.appendChild(more);
+  card.appendChild(acts);
+  return card;
+}
+
+function cardMenu(e, c) {
+  document.querySelectorAll('.bmenu').forEach((m) => m.remove());
+  const m = el('div', 'bmenu');
+  const add = (label, fn) => { const b = el('button', 'bmenu-item', label); b.onclick = () => { m.remove(); fn(); }; m.appendChild(b); };
+  add('⏸ Pause with reason…', () => { const r = prompt('Why is this paused / what is it waiting for?', c.reason || ''); if (r !== null) setTask(c.sessionId, { status: 'paused', reason: r }); });
+  add('✅ Mark done', () => setTask(c.sessionId, { status: 'done' }));
+  add('🗄 Archive', () => setTask(c.sessionId, { status: 'archived' }));
+  add('✏️ Rename task…', () => { const t = prompt('Task title', c.title); if (t) setTask(c.sessionId, { taskTitle: t }); });
+  if (c.locked) add('🔓 Clear my status (back to auto)', () => setTask(c.sessionId, { status: 'auto' }));
+  document.body.appendChild(m);
+  const r = e.target.getBoundingClientRect();
+  m.style.left = Math.min(r.left, window.innerWidth - 240) + 'px'; m.style.top = (r.bottom + 4) + 'px';
+  setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
+}
+
+async function setTask(sessionId, patch) {
+  try { await fetch('/api/task/' + encodeURIComponent(sessionId), { method: 'POST', body: JSON.stringify(patch) }); } catch { /* */ }
+  refreshBoard();
+}
+
+function bindDrop(lane, status) {
+  lane.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    lane.classList.toggle('droptarget', status !== 'active');
+    lane.classList.toggle('dropdenied', status === 'active');
+  });
+  lane.addEventListener('dragleave', () => lane.classList.remove('droptarget', 'dropdenied'));
+  lane.addEventListener('drop', (e) => {
+    e.preventDefault(); lane.classList.remove('droptarget', 'dropdenied');
+    const sid = e.dataTransfer.getData('text/plain'); if (!sid) return;
+    if (status === 'active') { lane.classList.add('shake'); setTimeout(() => lane.classList.remove('shake'), 400); toast('Active is detected, not declared'); return; }
+    setTask(sid, { status });
+  });
+}
+
 // draggable pane resizers (persisted widths)
 function initResizers() {
   const rail = $('#rail'), listcol = document.querySelector('.listcol');
@@ -746,6 +914,8 @@ initTheme();
 initNarrow();
 initResizers();
 bindSearch();
+initTabs();
+$('#insights').addEventListener('click', () => { if (document.body.dataset.view === 'now') switchView('sessions'); });
 $('#insights').addEventListener('click', openInsights);
 portraitize($('#portrait'));
 // gentle glow until the Portrait has been visited once

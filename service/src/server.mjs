@@ -9,6 +9,7 @@ import { openStore } from './store.mjs';
 import { reconcile } from './indexer.mjs';
 import { indexCoworkAll } from './cowork.mjs';
 import { retroReport, readBook, buildBook, extractSessions, callsUsedToday, DAILY_CALL_LIMIT } from './persona.mjs';
+import { buildBoard, pidAlive } from './taskboard.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, 'web');
@@ -44,10 +45,6 @@ const IDE_SCHEMES = {
   'Cursor': { app: 'Cursor', scheme: 'cursor' },
   'Windsurf': { app: 'Windsurf', scheme: 'windsurf' },
 };
-
-function pidAlive(pid) {
-  try { process.kill(pid, 0); return true; } catch (e) { return e && e.code === 'EPERM'; }
-}
 
 /** Live IDE windows from ~/.claude/ide/*.lock (pid-validated): [{ideName, folders[]}]. */
 function liveIdeWindows() {
@@ -232,6 +229,28 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
         return;
       }
       if (p === '/api/persona/extract-status') return sendJSON(res, 200, { ...extract, calls: { used: callsUsedToday(store), limit: DAILY_CALL_LIMIT } });
+
+      // ---- Now board (task view) ----
+      if (p === '/api/board') {
+        return sendJSON(res, 200, buildBoard(store, { project: qp.get('project') || undefined }));
+      }
+      const mTask = p.match(/^\/api\/task\/([^/]+)$/);
+      if (mTask && req.method === 'POST') {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          let patch = {};
+          try { patch = JSON.parse(body) || {}; } catch { /* */ }
+          const allowed = {};
+          for (const k of ['status', 'taskTitle', 'reason', 'category']) if (patch[k] !== undefined) allowed[k] = patch[k];
+          if (allowed.status && !['auto', 'waiting', 'inprogress', 'recurring', 'paused', 'done', 'archived'].includes(allowed.status)) {
+            return sendJSON(res, 400, { error: 'invalid status (active is detected, not declared)' });
+          }
+          const row = store.setTaskMeta(decodeURIComponent(mTask[1]), allowed);
+          sendJSON(res, 200, { ok: true, taskMeta: row });
+        });
+        return;
+      }
 
       // Open a session in Claude Code: workspace-aware IDE deep link, else terminal resume, else copy.
       if (p === '/api/open-in-claude' && req.method === 'POST') {

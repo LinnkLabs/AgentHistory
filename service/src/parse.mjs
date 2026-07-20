@@ -212,6 +212,8 @@ export function scanSession(filePath) {
   const meta = {
     cwd: '', gitBranch: '', version: '', entrypoint: '', firstTs: '', lastTs: '',
     slug: '', firstUserText: '', customTitle: '', aiTitle: '', lastPrompt: '', model: '', stopReason: '',
+    // task-status signals (P1-lite): what the session ENDED on + recurring/PR markers
+    endRole: '', endKind: '', endHint: '', queueDepth: 0, scheduled: 0, prUrl: '',
   };
   const messages = [];
   let raw;
@@ -236,12 +238,29 @@ export function scanSession(filePath) {
     if (o.type === 'last-prompt' && o.lastPrompt) meta.lastPrompt = o.lastPrompt;
     if (o.type === 'user' && o.message && !meta.firstUserText) meta.firstUserText = firstUserText(o.message.content).slice(0, 240);
     if (o.type === 'assistant' && o.message) { if (o.message.model) meta.model = o.message.model; if (o.message.stop_reason) meta.stopReason = o.message.stop_reason; }
+    // task-status signals
+    if (o.type === 'queue-operation') {
+      if (o.operation === 'enqueue') meta.queueDepth++;
+      else if (o.operation === 'dequeue' || o.operation === 'remove') meta.queueDepth = Math.max(0, meta.queueDepth - 1);
+    }
+    if (o.type === 'pr-link' && o.prUrl) meta.prUrl = o.prUrl;
     // messages for FTS
     for (const mm of messagesFromEvent(o)) {
       messages.push({ msgIndex: msgIndex++, role: mm.role, kind: mm.kind, ts: mm.ts, byteOffset: start, text: mm.text, model: mm.model || '' });
+      trackEndSignals(meta, mm);
     }
   }
   return { messages, meta };
+}
+
+/** Update meta's end-of-session signals with each surfaced message (also used by the tail scanner). */
+export function trackEndSignals(meta, mm) {
+  if (mm.role === 'system') {
+    if (/^\s*<scheduled-task|^\s*<<autonomous-loop/.test(mm.text || '')) meta.scheduled = 1;
+    return; // injected content never counts as the "end" of the conversation
+  }
+  meta.endRole = mm.role; meta.endKind = mm.kind;
+  meta.endHint = mm.kind === 'text' || mm.kind === 'tool_use' ? String(mm.text || '').slice(0, 240) : '';
 }
 
 /**
@@ -275,7 +294,15 @@ export function scanRange(filePath, startByte) {
       if (o.type === 'last-prompt' && o.lastPrompt) meta.lastPrompt = o.lastPrompt;
       if (o.slug) meta.slug = o.slug;
       if (o.type === 'assistant' && o.message && o.message.model) meta.model = o.message.model;
-      for (const mm of messagesFromEvent(o)) messages.push({ role: mm.role, kind: mm.kind, ts: mm.ts, text: mm.text, byteOffset: start, model: mm.model || '' });
+      if (o.type === 'queue-operation') {
+        if (o.operation === 'enqueue') meta.queueDelta = (meta.queueDelta || 0) + 1;
+        else if (o.operation === 'dequeue' || o.operation === 'remove') meta.queueDelta = (meta.queueDelta || 0) - 1;
+      }
+      if (o.type === 'pr-link' && o.prUrl) meta.prUrl = o.prUrl;
+      for (const mm of messagesFromEvent(o)) {
+        messages.push({ role: mm.role, kind: mm.kind, ts: mm.ts, text: mm.text, byteOffset: start, model: mm.model || '' });
+        trackEndSignals(meta, mm);
+      }
     }
     return { messages, consumed: lastNl + 1, meta };
   } catch {

@@ -84,6 +84,13 @@ export function indexOne(store, item, { force = false } = {}) {
     filePath: item.filePath,
     parserSchemaVer: SCHEMA_VERSION,
     indexedAtMs: Date.now(),
+    // task-status signals (P1-lite)
+    endRole: meta.endRole || '',
+    endKind: meta.endKind || '',
+    endHint: meta.endHint || '',
+    queueDepth: meta.queueDepth || 0,
+    scheduled: meta.scheduled || 0,
+    prUrl: meta.prUrl || '',
   };
 
   store.writeSession(session, messages);
@@ -115,6 +122,10 @@ export function tailIndexOne(store, item) {
   if (meta.model) patch.model = meta.model;
   const newTitle = deriveTitle({ customTitle: meta.customTitle, aiTitle: meta.aiTitle, slug: meta.slug, lastPrompt: meta.lastPrompt });
   if (newTitle) patch.title = newTitle;
+  // task-status signals from the tail (only when the tail surfaced messages)
+  if (meta.endRole) { patch.endRole = meta.endRole; patch.endKind = meta.endKind || ''; patch.endHint = meta.endHint || ''; }
+  if (meta.scheduled) patch.scheduled = 1;
+  if (meta.prUrl) patch.prUrl = meta.prUrl;
   store.patchSession(item.sessionId, patch);
   return 'tailed';
 }

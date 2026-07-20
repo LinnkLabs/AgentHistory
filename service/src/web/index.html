@@ -10,6 +10,10 @@
   <header class="topbar">
     <button id="railtoggle" class="iconbtn railtoggle" title="Projects">☰</button>
     <div class="brand">◆ Agent&nbsp;History</div>
+    <nav class="tabs" id="tabs">
+      <button class="tab" data-view="now">Now</button>
+      <button class="tab" data-view="sessions">Sessions</button>
+    </nav>
     <div class="searchwrap">
       <input id="q" class="search" type="search" placeholder="Search all sessions…  (Enter)" autocomplete="off" />
       <select id="scope" class="scope" title="Search scope">
@@ -31,6 +35,17 @@
     <a id="portrait" class="navbtn portraitbtn" href="/portrait.html" title="Your Agent Portrait — the story of you × your agents">✨ Portrait</a>
     <button id="theme" class="iconbtn" title="Toggle light / dark">☾</button>
   </header>
+
+  <section class="boardview" id="boardview" hidden>
+    <div class="boardbar">
+      <select id="bproject" class="scope" title="Filter board by project"><option value="">All projects</option></select>
+      <span class="bmeta" id="bmeta"></span>
+      <span style="flex:1"></span>
+      <button id="refineai" class="btn" hidden>✨ Refine with AI</button>
+    </div>
+    <div class="bcols" id="bcols"></div>
+    <div class="bdone" id="bdone" hidden></div>
+  </section>
 
   <main class="layout">
     <aside class="rail" id="rail"><!-- projects (O1) --></aside>

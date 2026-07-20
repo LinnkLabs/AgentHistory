@@ -91,16 +91,32 @@ CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
 END;
 `;
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export function openStore() {
   const db = new Database(dbPath());
   db.pragma('journal_mode = WAL');
   db.pragma('synchronous = NORMAL');
   db.exec(SCHEMA);
-  // idempotent migration: messages.model (schema v2) on a pre-existing DB
+  // idempotent migrations on pre-existing DBs
   const cols = db.prepare('PRAGMA table_info(messages)').all().map((c) => c.name);
   if (!cols.includes('model')) db.exec('ALTER TABLE messages ADD COLUMN model TEXT');
+  // v4: task-status signal columns on sessions + task_meta table
+  const scols = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+  for (const [col, type] of [['endRole', 'TEXT'], ['endKind', 'TEXT'], ['endHint', 'TEXT'],
+    ['queueDepth', 'INTEGER'], ['scheduled', 'INTEGER'], ['prUrl', 'TEXT']]) {
+    if (!scols.includes(col)) db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${type}`);
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS task_meta (
+    sessionId    TEXT PRIMARY KEY,
+    taskId       TEXT,
+    taskTitle    TEXT,
+    status       TEXT,
+    statusSource TEXT,
+    reason       TEXT,
+    category     TEXT,
+    updatedAt    INTEGER
+  )`);
   return new Store(db);
 }
 
@@ -128,16 +144,17 @@ class Store {
     this._upsertSession = db.prepare(`
       INSERT INTO sessions (sessionId, source, cwd, project, gitBranch, version, entrypoint,
         title, model, firstTs, lastTs, lastActivityMs, msgCount, subagentCount, fileSize,
-        filePath, parserSchemaVer, indexedAtMs)
+        filePath, parserSchemaVer, indexedAtMs, endRole, endKind, endHint, queueDepth, scheduled, prUrl)
       VALUES (@sessionId,@source,@cwd,@project,@gitBranch,@version,@entrypoint,@title,@model,
         @firstTs,@lastTs,@lastActivityMs,@msgCount,@subagentCount,@fileSize,@filePath,
-        @parserSchemaVer,@indexedAtMs)
+        @parserSchemaVer,@indexedAtMs,@endRole,@endKind,@endHint,@queueDepth,@scheduled,@prUrl)
       ON CONFLICT(sessionId) DO UPDATE SET
         source=@source, cwd=@cwd, project=@project, gitBranch=@gitBranch, version=@version,
         entrypoint=@entrypoint, title=@title, model=@model, firstTs=@firstTs, lastTs=@lastTs,
         lastActivityMs=@lastActivityMs, msgCount=@msgCount, subagentCount=@subagentCount,
         fileSize=@fileSize, filePath=@filePath, parserSchemaVer=@parserSchemaVer,
-        indexedAtMs=@indexedAtMs
+        indexedAtMs=@indexedAtMs, endRole=@endRole, endKind=@endKind, endHint=@endHint,
+        queueDepth=@queueDepth, scheduled=@scheduled, prUrl=@prUrl
     `);
     this._delMessages = db.prepare('DELETE FROM messages WHERE sessionId = ?');
     this._insMessage = db.prepare(
@@ -176,6 +193,8 @@ class Store {
 
   /** Replace a session + all its messages atomically. messages = [{msgIndex,role,kind,ts,byteOffset,text}]. */
   writeSession(session, messages) {
+    // default the v4 signal columns so older writers keep working
+    session = { endRole: '', endKind: '', endHint: '', queueDepth: 0, scheduled: 0, prUrl: '', ...session };
     const tx = this.db.transaction(() => {
       this._delMessages.run(session.sessionId);
       this._upsertSession.run(session);
@@ -200,6 +219,40 @@ class Store {
     });
     tx();
     return ids.length;
+  }
+
+  // ---------- task board (Now view) ----------
+
+  /** Sessions joined with task_meta — raw rows; status inference happens in taskboard.mjs. */
+  boardRows() {
+    return this.db.prepare(`
+      SELECT s.sessionId, s.source, s.cwd, s.project, s.gitBranch, s.title, s.model,
+             s.lastActivityMs, s.msgCount, s.subagentCount,
+             s.endRole, s.endKind, s.endHint, s.queueDepth, s.scheduled, s.prUrl,
+             t.taskId, t.taskTitle, t.status AS userStatus, t.statusSource, t.reason, t.category
+      FROM sessions s LEFT JOIN task_meta t ON t.sessionId = s.sessionId
+      ORDER BY s.lastActivityMs DESC
+    `).all();
+  }
+
+  /** Set/patch task_meta for a session. status:'auto' clears the user override. */
+  setTaskMeta(sessionId, patch) {
+    const cur = this.db.prepare('SELECT * FROM task_meta WHERE sessionId = ?').get(sessionId) || {};
+    const next = {
+      sessionId,
+      taskId: patch.taskId ?? cur.taskId ?? sessionId,
+      taskTitle: patch.taskTitle ?? cur.taskTitle ?? null,
+      status: patch.status === 'auto' ? null : (patch.status ?? cur.status ?? null),
+      statusSource: patch.status === 'auto' ? null : (patch.status ? 'user' : cur.statusSource ?? null),
+      reason: patch.reason ?? cur.reason ?? null,
+      category: patch.category ?? cur.category ?? null,
+      updatedAt: Date.now(),
+    };
+    this.db.prepare(`INSERT INTO task_meta (sessionId, taskId, taskTitle, status, statusSource, reason, category, updatedAt)
+      VALUES (@sessionId,@taskId,@taskTitle,@status,@statusSource,@reason,@category,@updatedAt)
+      ON CONFLICT(sessionId) DO UPDATE SET taskId=@taskId, taskTitle=@taskTitle, status=@status,
+        statusSource=@statusSource, reason=@reason, category=@category, updatedAt=@updatedAt`).run(next);
+    return next;
   }
 
   /** Delete every session (and its messages) for a given source. Returns count removed. */
