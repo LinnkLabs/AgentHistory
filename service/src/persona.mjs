@@ -74,7 +74,7 @@ function todayKey() { return 'persona.usage.' + new Date().toISOString().slice(0
 
 export function callsUsedToday(store) { return Number(store.meta(todayKey()) || 0); }
 
-function takeCall(store) {
+export function takeCall(store) {
   const used = callsUsedToday(store);
   if (used >= DAILY_CALL_LIMIT) return false;
   store.meta(todayKey(), used + 1);

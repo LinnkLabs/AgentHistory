@@ -72,14 +72,15 @@ export function inferStatus(row, live, now = Date.now()) {
   return { status: 'idle', reason: '', locked: false }; // off-board; lives in Sessions
 }
 
-/** Assemble the Now board. */
+const PRIORITY = { active: 0, waiting: 1, inprogress: 2, recurring: 3, paused: 4, done: 5, idle: 6, archived: 7 };
+
+/** Assemble the Now board. Sessions sharing a taskId (manual merge) collapse into one card. */
 export function buildBoard(store, { project } = {}) {
   const live = liveClaudeSessions();
   const now = Date.now();
-  const columns = { active: [], waiting: [], inprogress: [], recurring: [], paused: [] };
-  const done = [];
-  let idleCount = 0;
 
+  // 1) per-session inference, grouped by taskId
+  const groups = new Map();
   for (const row of store.boardRows()) {
     if (project && row.project !== project) continue;
     const { status, reason, locked } = inferStatus(row, live, now);
@@ -93,14 +94,33 @@ export function buildBoard(store, { project } = {}) {
       status, reason, locked, category: row.category || '',
       doneSuggested: status === 'inprogress' && !locked && !!row.prUrl && (now - (row.lastActivityMs || 0)) > IDLE_SUGGEST_DONE_MS,
     };
-    if (status === 'done') {
-      if (now - (row.lastActivityMs || 0) < DONE_WINDOW_MS) done.push(card);
-    } else if (status === 'idle') {
-      idleCount++;
-    } else if (status === 'archived') {
-      // hidden from the board entirely; reachable via Sessions
-    } else if (columns[status]) {
-      columns[status].push(card);
+    const g = groups.get(card.taskId);
+    if (g) g.push(card); else groups.set(card.taskId, [card]);
+  }
+
+  // 2) collapse each task group to one card: primary = most recent; status = most urgent member
+  const columns = { active: [], waiting: [], inprogress: [], recurring: [], paused: [] };
+  const done = [];
+  let idleCount = 0;
+
+  for (const members of groups.values()) {
+    members.sort((a, b) => (b.lastActivityMs || 0) - (a.lastActivityMs || 0));
+    const primary = members[0];
+    const best = members.reduce((s, m) => (PRIORITY[m.status] < PRIORITY[s] ? m.status : s), members[0].status);
+    const card = {
+      ...primary,
+      status: best,
+      reason: members.find((m) => m.status === best && m.reason)?.reason || primary.reason,
+      sessions: members.length > 1 ? members.map((m) => ({ sessionId: m.sessionId, title: m.title, lastActivityMs: m.lastActivityMs })) : undefined,
+    };
+    if (best === 'done') {
+      if (now - (primary.lastActivityMs || 0) < DONE_WINDOW_MS) done.push(card);
+    } else if (best === 'idle') {
+      idleCount += members.length;
+    } else if (best === 'archived') {
+      // hidden; reachable via Sessions
+    } else if (columns[best]) {
+      columns[best].push(card);
     } else {
       columns.inprogress.push(card); // unknown user status → safest visible bucket
     }

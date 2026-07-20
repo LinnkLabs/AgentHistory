@@ -264,6 +264,21 @@ body.light .bcard { background: #fff; }
 .bdone-exp { font-size: 11px; }
 .bdone-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; margin-top: 8px; }
 
+.bcard.mergetarget { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.bcard-sessions { display: flex; flex-direction: column; gap: 2px; }
+.bsess-link { font-size: 11px; color: var(--dim); cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bsess-link:hover { color: var(--accent); }
+
+/* Refine with AI confirm sheet (design 1f) */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 200; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; }
+.sheet { background: var(--bg); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 60px rgba(0,0,0,.35);
+         width: min(440px, 90vw); padding: 18px 20px; display: flex; flex-direction: column; gap: 12px; }
+.sheet-title { font-size: 15px; font-weight: 700; color: var(--fg); }
+.sheet-body { font-size: 13px; line-height: 1.5; color: var(--fg); }
+.sheet-meter { font-size: 12px; font-weight: 600; color: var(--accent); background: var(--hl); border-radius: 8px; padding: 7px 11px; }
+.sheet-note { font-size: 11.5px; line-height: 1.5; color: var(--faint); }
+.sheet-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
 .bmenu { position: fixed; z-index: 100; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px;
          box-shadow: 0 8px 28px rgba(0,0,0,.25); padding: 4px; display: flex; flex-direction: column; min-width: 220px; }
 .bmenu-item { text-align: left; background: none; border: none; color: var(--fg); font-size: 12px; padding: 7px 10px; border-radius: 7px; cursor: pointer; }

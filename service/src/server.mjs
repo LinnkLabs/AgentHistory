@@ -11,6 +11,7 @@ import { indexCoworkAll } from './cowork.mjs';
 import { indexCodexAll } from './codex.mjs';
 import { retroReport, readBook, buildBook, extractSessions, callsUsedToday, DAILY_CALL_LIMIT } from './persona.mjs';
 import { buildBoard, pidAlive } from './taskboard.mjs';
+import { runClassify, classifyPreview } from './classify.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, 'web');
@@ -112,6 +113,8 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
   let version = 0, lastChangeMs = 0;
   // one background persona extraction at a time; UI polls its progress
   const extract = { running: false, done: 0, total: 0, lastResult: null };
+  // one background classify run at a time (Refine with AI)
+  const classify = { running: false, done: 0, total: 0, lastResult: null };
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
@@ -235,6 +238,56 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
       if (p === '/api/board') {
         return sendJSON(res, 200, buildBoard(store, { project: qp.get('project') || undefined }));
       }
+      // merge sessions into one task (drag card onto card)
+      if (p === '/api/task/merge' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          let b = {};
+          try { b = JSON.parse(body) || {}; } catch { /* */ }
+          const into = String(b.into || ''); const ids = Array.isArray(b.sessionIds) ? b.sessionIds : [];
+          if (!into || !ids.length) return sendJSON(res, 400, { error: 'need into + sessionIds' });
+          const target = store.setTaskMeta(into, {}); // ensures a taskId exists for the target
+          for (const sid of ids) if (sid !== into) store.setTaskMeta(String(sid), { taskId: target.taskId });
+          sendJSON(res, 200, { ok: true, taskId: target.taskId, merged: ids.length });
+        });
+        return;
+      }
+      // unmerge: make a session standalone again
+      if (p === '/api/task/unmerge' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          let b = {};
+          try { b = JSON.parse(body) || {}; } catch { /* */ }
+          if (!b.sessionId) return sendJSON(res, 400, { error: 'need sessionId' });
+          store.setTaskMeta(String(b.sessionId), { taskId: String(b.sessionId) });
+          sendJSON(res, 200, { ok: true });
+        });
+        return;
+      }
+
+      // Refine with AI: preview (dryRun) → confirm → background run with polled progress
+      if (p === '/api/classify' && req.method === 'POST') {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          let b = {};
+          try { b = JSON.parse(body) || {}; } catch { /* */ }
+          if (b.dryRun) return sendJSON(res, 200, { ...classifyPreview(store), running: classify.running });
+          if (classify.running) return sendJSON(res, 409, { error: 'classify already running' });
+          classify.running = true; classify.done = 0; classify.total = 0; classify.lastResult = null;
+          runClassify(store, {
+            limit: Number(b.limit) || 25, model: b.model || '',
+            onProgress: (done, total) => { classify.done = done; classify.total = total; },
+          }).then((r) => { classify.lastResult = r; classify.running = false; version++; lastChangeMs = Date.now(); })
+            .catch((e) => { classify.lastResult = { error: String(e && e.message || e) }; classify.running = false; });
+          sendJSON(res, 200, { started: true });
+        });
+        return;
+      }
+      if (p === '/api/classify/status') return sendJSON(res, 200, classify);
+
       const mTask = p.match(/^\/api\/task\/([^/]+)$/);
       if (mTask && req.method === 'POST') {
         let body = '';

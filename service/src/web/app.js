@@ -749,7 +749,55 @@ function initTabs() {
   $('#bproject').addEventListener('change', () => {
     board.project = $('#bproject').value; localStorage.setItem('am-board-project', board.project); refreshBoard();
   });
+  $('#refineai').hidden = false;
+  $('#refineai').addEventListener('click', openRefineSheet);
   switchView(localStorage.getItem('am-view') || 'now');
+}
+
+// ---- ✨ Refine with AI (manual, metered — always confirm consumption first) ----
+async function openRefineSheet() {
+  let pv;
+  try { pv = await (await fetch('/api/classify', { method: 'POST', body: JSON.stringify({ dryRun: true }) })).json(); }
+  catch { toast('Service unreachable'); return; }
+  if (pv.running) { toast('Already classifying…'); pollClassify(); return; }
+  document.querySelectorAll('.sheet-backdrop').forEach((n) => n.remove());
+  const bd = el('div', 'sheet-backdrop');
+  const sh = el('div', 'sheet');
+  sh.appendChild(el('div', 'sheet-title', '✨ Refine with AI'));
+  const p1 = el('div', 'sheet-body');
+  p1.innerHTML = `Will classify <b>${pv.toClassify} changed session${pv.toClassify === 1 ? '' : 's'}</b> using <b>your local \`claude -p\`</b>.<br>` +
+    `Head+tail excerpts only; tool outputs never leave your machine.`;
+  sh.appendChild(p1);
+  const meter = el('div', 'sheet-meter', `${Math.min(pv.toClassify, 25)} calls this run · daily cap ${pv.cap} (${pv.callsUsed} used)`);
+  sh.appendChild(meter);
+  sh.appendChild(el('div', 'sheet-note', 'Applies titles, categories and status reasons only where you haven’t set one (🔒 always wins). Cached by session — unchanged sessions are never re-sent.'));
+  const row = el('div', 'sheet-actions');
+  const run = el('button', 'btn primary', pv.toClassify ? 'Run' : 'Nothing to classify');
+  run.disabled = !pv.toClassify;
+  run.onclick = async () => {
+    bd.remove();
+    await fetch('/api/classify', { method: 'POST', body: JSON.stringify({}) });
+    pollClassify();
+  };
+  const cancel = el('button', 'btn', 'Cancel'); cancel.onclick = () => bd.remove();
+  row.appendChild(run); row.appendChild(cancel);
+  sh.appendChild(row);
+  bd.appendChild(sh);
+  bd.onclick = (e) => { if (e.target === bd) bd.remove(); };
+  document.body.appendChild(bd);
+}
+function pollClassify() {
+  const btn = $('#refineai');
+  const t = setInterval(async () => {
+    let s;
+    try { s = await getJSON('/api/classify/status'); } catch { return; }
+    if (s.running) { btn.textContent = `✨ classifying ${s.done}/${s.total || '…'}`; return; }
+    clearInterval(t);
+    btn.textContent = '✨ Refine with AI';
+    const r = s.lastResult || {};
+    toast(r.error ? 'Classify failed: ' + r.error : `Classified ${r.done || 0} · ${r.applied || 0} refined${r.capped ? ' · daily cap hit' : ''}`);
+    refreshBoard();
+  }, 1200);
 }
 
 async function refreshBoard() {
@@ -812,6 +860,16 @@ function boardCard(c) {
   card.draggable = true; card.dataset.sid = c.sessionId;
   card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/plain', c.sessionId); card.classList.add('dragging'); });
   card.addEventListener('dragend', () => card.classList.remove('dragging'));
+  // drop another card ONTO this one = merge into this task
+  card.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); card.classList.add('mergetarget'); });
+  card.addEventListener('dragleave', () => card.classList.remove('mergetarget'));
+  card.addEventListener('drop', async (e) => {
+    e.preventDefault(); e.stopPropagation(); card.classList.remove('mergetarget');
+    const sid = e.dataTransfer.getData('text/plain');
+    if (!sid || sid === c.sessionId) return;
+    await fetch('/api/task/merge', { method: 'POST', body: JSON.stringify({ into: c.sessionId, sessionIds: [sid] }) });
+    toast('Merged into “' + c.title.slice(0, 32) + '”'); refreshBoard();
+  });
 
   const h = el('div', 'bcard-h');
   if (c.status === 'active') h.appendChild(el('span', 'bpulse', ''));
@@ -823,7 +881,18 @@ function boardCard(c) {
   meta.appendChild(el('span', null, c.project || '(unknown)'));
   const srcLabel = c.source === 'desktop-cowork' ? 'cowork' : (c.source === 'ide' ? 'claude' : c.source || 'claude');
   meta.appendChild(el('span', 'agent a-' + (c.source === 'desktop-cowork' ? 'cowork' : c.source === 'codex' ? 'codex' : 'claude'), srcLabel));
+  if (c.sessions) meta.appendChild(el('span', 'block', `⧉ ${c.sessions.length} sessions`));
+  if (c.category) meta.appendChild(el('span', 'block', c.category));
   card.appendChild(meta);
+  if (c.sessions) {
+    const list = el('div', 'bcard-sessions');
+    c.sessions.forEach((s2) => {
+      const a = el('a', 'bsess-link', `↳ ${s2.title.slice(0, 40)} · ${rel(s2.lastActivityMs)}`);
+      a.onclick = (e) => { e.stopPropagation(); switchView('sessions'); openSession(s2.sessionId); };
+      list.appendChild(a);
+    });
+    card.appendChild(list);
+  }
 
   if (c.reason) card.appendChild(el('div', 'bcard-reason', c.reason));
   const info = el('div', 'bcard-info',
@@ -857,6 +926,9 @@ function cardMenu(e, c) {
   add('🗄 Archive', () => setTask(c.sessionId, { status: 'archived' }));
   add('✏️ Rename task…', () => { const t = prompt('Task title', c.title); if (t) setTask(c.sessionId, { taskTitle: t }); });
   if (c.locked) add('🔓 Clear my status (back to auto)', () => setTask(c.sessionId, { status: 'auto' }));
+  if (c.sessions) add('⧉ Unmerge this session', async () => {
+    await fetch('/api/task/unmerge', { method: 'POST', body: JSON.stringify({ sessionId: c.sessionId }) }); refreshBoard();
+  });
   document.body.appendChild(m);
   const r = e.target.getBoundingClientRect();
   m.style.left = Math.min(r.left, window.innerWidth - 240) + 'px'; m.style.top = (r.bottom + 4) + 'px';
