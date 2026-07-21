@@ -62,6 +62,32 @@ canvas { display: block; max-width: 100%; }
 .factcard .fq { color: #8a93a6; font-size: 12.5px; font-style: italic; border-left: 2px solid #2a3346; padding-left: 10px; margin: 8px 0; }
 .factcard .fm { color: #5b6474; font-size: 11.5px; }
 
+/* ---- fact wall: the model of you, readable by default ---- */
+.factwall { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px 26px; margin-top: 8px; align-items: start; }
+.fw-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: auto; align-items: stretch; }
+.fw-row, .fw-h { width: 100%; box-sizing: border-box; }
+.fw-h { display: flex; align-items: center; gap: 8px; padding-bottom: 8px; border-bottom: 1px solid #222a38; }
+.fw-dot { width: 8px; height: 8px; border-radius: 99px; background: var(--kc); flex: none; box-shadow: 0 0 10px var(--kc); }
+.fw-t { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #d7dee9; }
+.fw-n { margin-left: auto; font-size: 11px; color: #5b6474; white-space: nowrap; }
+.fw-row { border-left: 2px solid #222a38; padding: 9px 0 9px 12px; cursor: pointer; transition: border-color .15s, background .15s; border-radius: 0 8px 8px 0; }
+.fw-row:hover { background: rgba(255,255,255,.025); }
+.fw-row.confirmed { border-left-color: var(--kc); }
+.fw-row.hit { background: rgba(255,255,255,.05); }
+.fw-s { font-size: 13.5px; line-height: 1.5; color: #c9d2df; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.fw-row.confirmed .fw-s { color: #e8edf5; }
+.fw-row.open .fw-s { -webkit-line-clamp: unset; overflow: visible; }
+.fw-m { display: flex; gap: 10px; align-items: center; margin-top: 6px; }
+.fw-badge { font-size: 10.5px; letter-spacing: .04em; color: #5b6474; }
+.fw-row.confirmed .fw-badge { color: var(--kc); }
+.fw-ev { font-size: 10.5px; color: #5b6474; }
+.fw-ev::before { content: '· '; }
+.fw-q { display: none; margin-top: 8px; }
+.fw-row.open .fw-q { display: block; }
+.fw-q blockquote { margin: 0 0 8px; padding-left: 10px; border-left: 2px solid #2a3346; color: #98a2b5; font-size: 12px; font-style: italic; line-height: 1.5; }
+.fw-q cite { display: block; margin-top: 4px; font-style: normal; font-size: 10.5px; color: #4a5261; }
+@media (max-width: 720px) { .factwall { grid-template-columns: 1fr; } }
+
 /* voice */
 .quotes { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; max-width: 1100px; }
 .q { background: #0d1017; border: 1px solid #232a38; border-radius: 14px; padding: 16px 18px; }

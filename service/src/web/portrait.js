@@ -193,10 +193,12 @@ function renderRiver(v) {
 function renderConstellation(v) {
   const facts = (v.facts || []).filter((f) => f.status !== 'superseded');
   $('#const-lede').textContent = facts.length
-    ? `${v.persona.facts.active || 0} confirmed and ${v.persona.facts.forming || 0} forming facts, distilled from ${v.persona.extracted} sessions — every one carries a quote from your own transcripts. Click a star.`
+    ? `${v.persona.facts.active || 0} confirmed · ${v.persona.facts.forming || 0} forming — distilled from ${v.persona.extracted} sessions. Confirmed facts appeared in 2+ independent sessions. Click any statement for the verbatim quote that proves it.`
     : 'No facts yet — run `agent-manager persona extract` to begin distilling, then come back.';
+  renderFactWall(facts);
   const wrap = $('#constellation').parentElement;
-  const W = wrap.clientWidth, H = Math.min(560, Math.max(420, window.innerHeight * 0.6));
+  // the constellation is now an overview, not the content — the fact wall below carries the detail
+  const W = wrap.clientWidth, H = 230;
   const ctx = setupCanvas($('#constellation'), W, H);
   const cx = W / 2, cy = H / 2;
   const kinds = ['profile', 'preference', 'workflow', 'interest'];
@@ -230,11 +232,11 @@ function renderConstellation(v) {
     ctx.fillStyle = '#fff'; ctx.font = '700 15px -apple-system, sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('YOU', cx, cy + 5);
 
-    const R = Math.min(W, H) / 2 - 30;
+    const RX = W / 2 - 70, RY = H / 2 - 22;      // ellipse fills the banner instead of a blob
     for (const n of nodes) {
       n.angle += n.speed * 16;
-      n.x = cx + Math.cos(n.angle) * R * n.ring;
-      n.y = cy + Math.sin(n.angle) * R * n.ring * 0.86;
+      n.x = cx + Math.cos(n.angle) * RX * n.ring;
+      n.y = cy + Math.sin(n.angle) * RY * n.ring;
       const color = KIND_COLOR[n.f.kind] || '#8a93a6';
       const active = n.f.status === 'active';
       const isSel = selected === n || hovered === n;
@@ -269,7 +271,59 @@ function renderConstellation(v) {
       ev.map((e2) => `<div class="fq">“${esc(e2.quote)}”</div>`).join('') +
       `<div class="fm">receipts: ${ev.map((e2) => e2.sessionId.slice(0, 8) + '#' + e2.msgIndex).join(' · ')}</div>`;
     card.classList.add('show');
+    focusFactRow(selected.f.key);
   });
+}
+
+/**
+ * The fact wall: every statement readable BY DEFAULT, grouped by kind, confirmed first.
+ * The constellation above is the overview; this is the substance.
+ */
+const KIND_LABEL = { profile: 'Who you are', preference: 'What you prefer', workflow: 'How you work', interest: 'What you follow' };
+function renderFactWall(facts) {
+  const wall = $('#factwall');
+  if (!facts.length) { wall.innerHTML = ''; return; }
+  const kinds = ['workflow', 'preference', 'profile', 'interest'];   // most actionable first
+  const byKind = new Map(kinds.map((k) => [k, []]));
+  for (const f of facts) (byKind.get(f.kind) || byKind.get('profile')).push(f);
+  const rank = (f) => (f.status === 'active' ? 0 : 1) * 1000 - (f.sessions?.length || 0);
+
+  wall.innerHTML = kinds.filter((k) => byKind.get(k).length).map((k) => {
+    const list = byKind.get(k).sort((a, b) => rank(a) - rank(b));
+    const nActive = list.filter((f) => f.status === 'active').length;
+    return `<div class="fw-col" style="--kc:${KIND_COLOR[k] || '#8a93a6'}">
+      <div class="fw-h"><span class="fw-dot"></span><span class="fw-t">${esc(KIND_LABEL[k] || k)}</span>
+        <span class="fw-n">${list.length}${nActive ? ` · ${nActive} confirmed` : ''}</span></div>
+      ${list.map((f) => factRow(f)).join('')}
+    </div>`;
+  }).join('');
+
+  wall.querySelectorAll('.fw-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const open = row.classList.toggle('open');
+      if (open) wall.querySelectorAll('.fw-row.open').forEach((r) => { if (r !== row) r.classList.remove('open'); });
+    });
+  });
+}
+function factRow(f) {
+  const ev = (f.evidence || []).slice(0, 2);
+  const confirmed = f.status === 'active';
+  return `<article class="fw-row${confirmed ? ' confirmed' : ''}" data-fid="${esc(String(f.key ?? ""))}">
+    <div class="fw-s">${esc(f.statement)}</div>
+    <div class="fw-m">
+      <span class="fw-badge">${confirmed ? `confirmed · ${f.sessions?.length || 0} sessions` : 'forming'}</span>
+      ${ev.length ? `<span class="fw-ev">${ev.length} receipt${ev.length > 1 ? 's' : ''}</span>` : ''}
+    </div>
+    ${ev.length ? `<div class="fw-q">${ev.map((e) =>
+      `<blockquote>“${esc(e.quote)}”<cite>${esc(String(e.sessionId).slice(0, 8))}#${esc(String(e.msgIndex))}</cite></blockquote>`).join('')}</div>` : ''}
+  </article>`;
+}
+function focusFactRow(id) {
+  const row = document.querySelector(`.fw-row[data-fid="${CSS.escape(String(id ?? ''))}"]`);
+  if (!row) return;
+  document.querySelectorAll('.fw-row.hit').forEach((r) => r.classList.remove('hit'));
+  row.classList.add('hit'); row.classList.add('open');
+  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
 }
 
 // ---------------- scene 5: voice ----------------
