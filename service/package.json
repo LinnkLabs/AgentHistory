@@ -1,11 +1,12 @@
 {
-  "name": "@getlinnk/agent-history",
+  "name": "agent-history-cli",
   "version": "0.1.1",
   "description": "Every agent session, one board. A local-first task board + searchable librarian for your Claude Code and Codex sessions \u2014 live status, full-text search over every transcript, click-to-jump, and one-click resume.",
   "type": "module",
   "bin": {
-    "agent-history": "bin/agent-manager.mjs",
-    "agenthistory": "bin/agent-manager.mjs"
+    "agent-history-cli": "bin/agent-manager.mjs",
+    "agenthistory": "bin/agent-manager.mjs",
+    "agent-history": "bin/agent-manager.mjs"
   },
   "files": [
     "bin",
@@ -44,8 +45,5 @@
     "search",
     "local-first"
   ],
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  }
+  "license": "MIT"
 }
