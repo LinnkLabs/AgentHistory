@@ -54,8 +54,8 @@ class SessionsViewProvider {
     return `<!doctype html><meta charset="utf-8"><style>body{font:13px -apple-system,sans-serif;color:var(--vscode-foreground);background:var(--vscode-sideBar-background);padding:16px}code{background:var(--vscode-textCodeBlock-background);padding:1px 5px;border-radius:4px}a{color:var(--vscode-textLink-foreground)}</style>
 <h3>Agent History service unavailable</h3>
 <p>${esc(msg)}</p>
-<p>Make sure the service is installed, then reload:</p>
-<pre><code>cd "Agent Manager/service" &amp;&amp; npm install &amp;&amp; node bin/agent-manager.mjs index</code></pre>
+<p>Build the index once (needs Node 20+), then reload:</p>
+<pre><code>npx agent-history-cli index</code></pre>
 <p><a href="command:agentHistory.restart">↻ Retry</a></p>`;
   }
 }
@@ -66,7 +66,7 @@ function runCli(context, subcommand) {
   const entry = resolveServiceEntry(context.extensionPath, cfg().get('serviceEntry', '') || undefined);
   // system node (see service-control startService) — never process.execPath (Electron ABI).
   const cmd = entry ? nodePath() : (process.platform === 'win32' ? 'npx.cmd' : 'npx');
-  const args = entry ? [entry, subcommand] : ['--yes', 'agent-manager', subcommand];
+  const args = entry ? [entry, subcommand] : ['--yes', 'agent-history-cli', subcommand];
   return spawn(cmd, args, { stdio: 'ignore' });
 }
 

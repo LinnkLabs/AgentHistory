@@ -37,7 +37,7 @@ function startService({ port, entry, nodePath = 'node' }) {
   const cmd = entry ? nodePath : (process.platform === 'win32' ? 'npx.cmd' : 'npx');
   const args = entry
     ? [entry, 'serve', '--port', String(port), '--no-open']
-    : ['--yes', 'agent-manager', 'serve', '--port', String(port), '--no-open'];
+    : ['--yes', 'agent-history-cli', 'serve', '--port', String(port), '--no-open'];
   const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
   child.unref();
   return child;
@@ -64,7 +64,7 @@ async function ensureService({ port, extensionDir, configuredEntry, nodePath = '
   const entry = resolveServiceEntry(extensionDir, configuredEntry);
   startService({ port, entry, nodePath });
   stats = await waitForHealth(port);
-  if (!stats) throw new Error(`agent-manager service did not start on port ${port}` + (entry ? '' : ' (no local entry found; is `agent-manager` installed for npx?)'));
+  if (!stats) throw new Error(`Agent History service did not start on port ${port}` + (entry ? '' : ' (no local entry found; is `agent-history-cli` reachable via npx?)'));
   return { url: `http://127.0.0.1:${port}`, stats, spawned: true };
 }
 

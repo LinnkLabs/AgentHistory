@@ -1,49 +1,126 @@
 {
   "name": "agent-history",
-  "displayName": "Agent History — Claude Sessions",
+  "displayName": "Agent History \u2014 Claude Sessions",
   "description": "Organize, search, and locate every Claude session (CLI + IDE + desktop) inside VS Code / Cursor. Full history, full-text search, survives the 30-day cleanup.",
-  "version": "0.2.0",
+  "version": "0.1.2",
   "publisher": "buildonagents",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
-  "keywords": ["claude", "claude-code", "session", "history", "search", "cursor"],
-  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "session",
+    "history",
+    "search",
+    "cursor"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./extension.js",
   "license": "MIT",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
-        { "id": "agentHistory", "title": "Agent History", "icon": "media/icon.svg" }
+        {
+          "id": "agentHistory",
+          "title": "Agent History",
+          "icon": "media/icon.svg"
+        }
       ]
     },
     "views": {
       "agentHistory": [
-        { "type": "webview", "id": "agentHistory.view", "name": "Sessions" }
+        {
+          "type": "webview",
+          "id": "agentHistory.view",
+          "name": "Sessions"
+        }
       ]
     },
     "commands": [
-      { "command": "agentHistory.openPortrait", "title": "Agent History: Open your Agent Portrait", "icon": "$(sparkle)" },
-      { "command": "agentHistory.reindex", "title": "Agent History: Reindex sessions", "icon": "$(refresh)" },
-      { "command": "agentHistory.openInBrowser", "title": "Agent History: Open dashboard in browser", "icon": "$(link-external)" },
-      { "command": "agentHistory.restart", "title": "Agent History: Restart service", "icon": "$(debug-restart)" },
-      { "command": "agentHistory.toggleScope", "title": "Agent History: Toggle workspace scope", "icon": "$(filter)" }
+      {
+        "command": "agentHistory.openPortrait",
+        "title": "Agent History: Open your Agent Portrait",
+        "icon": "$(sparkle)"
+      },
+      {
+        "command": "agentHistory.reindex",
+        "title": "Agent History: Reindex sessions",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agentHistory.openInBrowser",
+        "title": "Agent History: Open dashboard in browser",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "agentHistory.restart",
+        "title": "Agent History: Restart service",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "agentHistory.toggleScope",
+        "title": "Agent History: Toggle workspace scope",
+        "icon": "$(filter)"
+      }
     ],
     "menus": {
       "view/title": [
-        { "command": "agentHistory.openPortrait", "when": "view == agentHistory.view", "group": "navigation@0" },
-        { "command": "agentHistory.toggleScope", "when": "view == agentHistory.view", "group": "navigation@1" },
-        { "command": "agentHistory.reindex", "when": "view == agentHistory.view", "group": "navigation@2" },
-        { "command": "agentHistory.openInBrowser", "when": "view == agentHistory.view", "group": "navigation@3" },
-        { "command": "agentHistory.restart", "when": "view == agentHistory.view", "group": "1_actions" }
+        {
+          "command": "agentHistory.openPortrait",
+          "when": "view == agentHistory.view",
+          "group": "navigation@0"
+        },
+        {
+          "command": "agentHistory.toggleScope",
+          "when": "view == agentHistory.view",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agentHistory.reindex",
+          "when": "view == agentHistory.view",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agentHistory.openInBrowser",
+          "when": "view == agentHistory.view",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agentHistory.restart",
+          "when": "view == agentHistory.view",
+          "group": "1_actions"
+        }
       ]
     },
     "configuration": {
       "title": "Agent History",
       "properties": {
-        "agentHistory.port": { "type": "number", "default": 4600, "description": "Local port the agent-history service listens on." },
-        "agentHistory.serviceEntry": { "type": "string", "default": "", "description": "Absolute path to the service's bin/agent-manager.mjs. Empty = auto-detect sibling package, else use `npx agent-manager`." },
-        "agentHistory.nodePath": { "type": "string", "default": "node", "description": "System Node.js binary used to run the service. Use an absolute path if `node` is not on VS Code's PATH (common on macOS GUI launches / nvm). Must be the same Node that built the service's better-sqlite3." },
-        "agentHistory.scopeToWorkspace": { "type": "boolean", "default": true, "description": "Default the view to sessions from the open workspace folder (toggle in the view title)." }
+        "agentHistory.port": {
+          "type": "number",
+          "default": 4600,
+          "description": "Local port the agent-history service listens on."
+        },
+        "agentHistory.serviceEntry": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to a local checkout's service/bin/agent-manager.mjs. Empty = auto-detect a sibling checkout, else run the published CLI via `npx agent-history-cli`."
+        },
+        "agentHistory.nodePath": {
+          "type": "string",
+          "default": "node",
+          "description": "System Node.js binary used to run the service. Use an absolute path if `node` is not on VS Code's PATH (common on macOS GUI launches / nvm). Must be the same Node that built the service's better-sqlite3."
+        },
+        "agentHistory.scopeToWorkspace": {
+          "type": "boolean",
+          "default": true,
+          "description": "Default the view to sessions from the open workspace folder (toggle in the view title)."
+        }
       }
     }
   }

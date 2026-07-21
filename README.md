@@ -88,9 +88,46 @@ claude mcp add -s user agent-history -- npx agent-history-cli mcp
 
 ## VS Code / Cursor extension
 
-The dashboard also ships as an activity-bar panel (thin client — it auto-starts the same local
-service). Grab `agent-history-*.vsix` from [Releases](https://github.com/LinnkLabs/AgentHistory/releases)
-and: `code --install-extension agent-history-*.vsix`
+The dashboard also ships as an activity-bar panel — a thin client that auto-starts the same local
+service. It isn't on the marketplaces yet, so install the `.vsix` directly from
+[Releases](https://github.com/LinnkLabs/AgentHistory/releases/latest) (this is normal "sideloading";
+both editors support it out of the box).
+
+**Either editor — from the UI:** open the Extensions view → `…` menu (top-right) →
+**Install from VSIX…** → pick the downloaded file. Or just **drag the `.vsix` onto the Extensions
+panel**.
+
+**Or from the terminal:**
+
+```bash
+# VS Code
+code --install-extension ~/Downloads/agent-history-0.1.2.vsix
+
+# Cursor
+cursor --install-extension ~/Downloads/agent-history-0.1.2.vsix
+
+# Windsurf / other VS Code forks
+windsurf --install-extension ~/Downloads/agent-history-0.1.2.vsix
+```
+
+Then **reload the window** (`Cmd/Ctrl+Shift+P` → *Developer: Reload Window*) and click the Agent
+History icon in the activity bar. The extension reuses a running service, or starts one via
+`npx agent-history-cli` — so nothing else to configure.
+
+<details>
+<summary>Notes & troubleshooting</summary>
+
+- If the `code` / `cursor` command isn't found, install it from the palette:
+  *Shell Command: Install 'code' command in PATH* (Cursor has the same entry).
+- Sideloaded extensions **don't auto-update** — grab the newer `.vsix` from Releases and install
+  again (same command; it replaces the old version).
+- Running from a git checkout instead? Point `agentHistory.serviceEntry` at
+  `<repo>/service/bin/agent-manager.mjs`, and set `agentHistory.nodePath` to an absolute Node path if
+  `node` isn't on your editor's PATH (common with nvm + GUI launches).
+- Cursor and other forks can't use the Microsoft marketplace at all, so the `.vsix` (or a future
+  Open VSX listing) is the supported route there.
+
+</details>
 
 ## Troubleshooting
 
