@@ -11,6 +11,10 @@ npx agent-history-cli
 That's it. It indexes your local session transcripts (~30s for a few hundred sessions) and opens
 the dashboard at `http://127.0.0.1:4600`.
 
+![Agent History demo — board, search, jump to the exact message](docs/demo.gif)
+
+*Search every message → jump straight to the match → resume the session in your editor.*
+
 ![Now board](docs/board.png)
 
 ## Why
