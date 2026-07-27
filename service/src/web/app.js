@@ -65,8 +65,29 @@ function initTheme() {
 }
 function applyTheme(t) {
   document.body.classList.toggle('light', t === 'light');
-  $('#theme').textContent = t === 'light' ? '☀' : '☾';
+  $('#theme').textContent = (t === 'light' ? '☀' : '☾') + ' Toggle theme';
   localStorage.setItem('am-theme', t);
+}
+
+/**
+ * Clipboard that works everywhere — including VS Code webview iframes, where the async
+ * Clipboard API is permission-blocked. Falls back to the legacy execCommand path.
+ */
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch { /* webview denies */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ta);
+    ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch { return false; }
+}
+async function copyWithToast(text, label) {
+  toast((await copyText(text)) ? label : 'Copy failed — select the text manually');
 }
 
 // ================= data load =================
@@ -377,8 +398,8 @@ function renderTranscript(s, messages, targetMi) {
   const openBtn = mkBtn('✱ Open in Claude Code', () => openInClaudeCode(s));
   openBtn.classList.add('primary');
   actions.appendChild(openBtn);
-  actions.appendChild(mkBtn('⧉ Copy resume', () => { navigator.clipboard.writeText(resume); toast('Resume command copied'); }));
-  actions.appendChild(mkBtn('⧉ Copy path', () => { navigator.clipboard.writeText(s.cwd || ''); toast('Path copied'); }));
+  actions.appendChild(mkBtn('⧉ Copy resume', () => copyWithToast(resume, 'Resume command copied')));
+  actions.appendChild(mkBtn('⧉ Copy path', () => copyWithToast(s.cwd || '', 'Path copied')));
   actions.appendChild(mkBtn('◱ Reveal folder', () => { fetch('/api/reveal', { method: 'POST', body: JSON.stringify({ path: s.cwd }) }); }));
   if (state.openMatches.length) {
     const nav = el('span', 'matchnav');
@@ -448,7 +469,7 @@ async function openInClaudeCode(s) {
   if (mi != null) {
     const m = (state.openMessages || []).find((x) => x.msgIndex === mi);
     if (m && m.text) {
-      try { await navigator.clipboard.writeText(m.text.slice(0, 4000)); copied = true; } catch { /* */ }
+      copied = await copyText(m.text.slice(0, 4000));
     }
   }
   let r;
@@ -459,7 +480,7 @@ async function openInClaudeCode(s) {
   if (r.method === 'ide') toast(`Opening in ${r.ide}…${blockNote}`);
   else if (r.method === 'terminal') toast(`Opened Terminal with claude --resume${blockNote}`);
   else if (r.method === 'copy') {
-    try { await navigator.clipboard.writeText(r.resumeCmd || ''); } catch { /* */ }
+    await copyText(r.resumeCmd || '');
     toast(`Resume command copied${r.reason ? ` (${r.reason})` : ''}`);
   } else toast(`Cannot open: ${r.reason || 'unknown'}`);
 }
@@ -486,6 +507,9 @@ function messageRow(m, q, isMatch, isTarget) {
   h.appendChild(el('span', 'who ' + m.role, whoLabel(m.role)));
   if (m.kind !== 'text') h.appendChild(el('span', 'mkind', m.kind.replace('_', ' ')));
   if (m.model) { const mm = el('span', 'mmodel', shortModel(m.model)); mm.title = m.model; h.appendChild(mm); }
+  const cp = el('button', 'mcopy', '⧉ copy'); cp.title = 'Copy this message';
+  cp.onclick = (e) => { e.stopPropagation(); copyWithToast(m.text || '', 'Message copied'); };
+  h.appendChild(cp);
   if (m.ts) h.appendChild(el('span', 'mts', abs(m.ts)));
   row.appendChild(h);
   const body = el('div', 'mbody');
@@ -653,7 +677,7 @@ function renderInsights(retro, persona) {
   copyBtn.onclick = async () => {
     try {
       const b = await getJSON('/api/persona/book');
-      await navigator.clipboard.writeText(b.markdown || '');
+      await copyText(b.markdown || '');
       toast('Context book copied — paste into any CLAUDE.md');
     } catch { toast('Copy failed'); }
   };
@@ -751,7 +775,12 @@ function initTabs() {
   });
   $('#refineai').hidden = false;
   $('#refineai').addEventListener('click', openRefineSheet);
-  switchView(localStorage.getItem('am-view') || 'now');
+  // ⋯ overflow menu (Insights / Portrait / theme / stats)
+  $('#morebtn').addEventListener('click', (e) => { e.stopPropagation(); $('#moremenu').hidden = !$('#moremenu').hidden; });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.more')) $('#moremenu').hidden = true; });
+  // Sessions is the home view (search-first librarian). One-time migration for stored 'now' defaults.
+  if (!localStorage.getItem('am-view-v2')) { localStorage.setItem('am-view-v2', '1'); localStorage.setItem('am-view', 'sessions'); }
+  switchView(localStorage.getItem('am-view') || 'sessions');
 }
 
 // ---- ✨ Refine with AI (manual, metered — always confirm consumption first) ----

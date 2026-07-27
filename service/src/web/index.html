@@ -11,11 +11,11 @@
     <button id="railtoggle" class="iconbtn railtoggle" title="Projects">☰</button>
     <div class="brand">◆ Agent&nbsp;History</div>
     <nav class="tabs" id="tabs">
-      <button class="tab" data-view="now">Now</button>
       <button class="tab" data-view="sessions">Sessions</button>
+      <button class="tab" data-view="now">Now</button>
     </nav>
     <div class="searchwrap">
-      <input id="q" class="search" type="search" placeholder="Search all sessions…  (Enter)" autocomplete="off" />
+      <input id="q" class="search" type="search" placeholder="Search everything — then open or copy  (Enter)" autocomplete="off" />
       <select id="scope" class="scope" title="Search scope">
         <option value="global">All projects</option>
         <option value="project">This project</option>
@@ -29,11 +29,16 @@
       <button class="chip" data-target="commands">Commands</button>
       <button class="chip" data-target="toolout">Tool output</button>
     </div>
-    <div class="stats" id="stats"></div>
     <span id="live" class="livedot" title="Live — index auto-updates"></span>
-    <button id="insights" class="navbtn" title="Retro & context book">✦ Insights</button>
-    <a id="portrait" class="navbtn portraitbtn" href="/portrait.html" title="Your Agent Portrait — the story of you × your agents">✨ Portrait</a>
-    <button id="theme" class="iconbtn" title="Toggle light / dark">☾</button>
+    <div class="more">
+      <button id="morebtn" class="iconbtn" title="More">⋯</button>
+      <div id="moremenu" class="moremenu" hidden>
+        <div class="stats mm-stats" id="stats"></div>
+        <button id="insights" class="mm-item" title="Retro & context book">✦ Insights</button>
+        <a id="portrait" class="mm-item portraitbtn" href="/portrait.html" title="Your Agent Portrait — the story of you × your agents">✨ Your Portrait</a>
+        <button id="theme" class="mm-item" title="Toggle light / dark">☾ Toggle theme</button>
+      </div>
+    </div>
   </header>
 
   <section class="boardview" id="boardview" hidden>
