@@ -1,6 +1,6 @@
 {
   "name": "agent-history-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Every agent session, one board. A local-first task board + searchable librarian for your Claude Code and Codex sessions \u2014 live status, full-text search over every transcript, click-to-jump, and one-click resume.",
   "type": "module",
   "bin": {
