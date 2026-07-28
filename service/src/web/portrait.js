@@ -309,7 +309,7 @@ function factRow(f) {
   const ev = (f.evidence || []).slice(0, 2);
   const confirmed = f.status === 'active';
   return `<article class="fw-row${confirmed ? ' confirmed' : ''}" data-fid="${esc(String(f.key ?? ""))}">
-    <div class="fw-s">${esc(f.statement)}</div>
+    <div class="fw-s"><span class="fw-g">${confirmed ? '●' : '◌'}</span>${esc(f.statement)}</div>
     <div class="fw-m">
       <span class="fw-badge">${confirmed ? `confirmed · ${f.sessions?.length || 0} sessions` : 'forming'}</span>
       ${ev.length ? `<span class="fw-ev">${ev.length} receipt${ev.length > 1 ? 's' : ''}</span>` : ''}

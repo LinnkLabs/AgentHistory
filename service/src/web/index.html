@@ -15,20 +15,15 @@
       <button class="tab" data-view="now">Now</button>
     </nav>
     <div class="searchwrap">
-      <input id="q" class="search" type="search" placeholder="Search everything — then open or copy  (Enter)" autocomplete="off" />
-      <select id="scope" class="scope" title="Search scope">
-        <option value="global">All projects</option>
-        <option value="project">This project</option>
-        <option value="session">This session</option>
-      </select>
+      <span class="searchicon">⌕</span>
+      <input id="q" class="search" type="search" placeholder="Search everything — then open or copy" autocomplete="off" />
+      <kbd class="kbd" id="kbdhint">⌘K</kbd>
     </div>
-    <div class="targets" id="targets">
-      <button class="chip active" data-target="all">All</button>
-      <button class="chip" data-target="input">Your input</button>
-      <button class="chip" data-target="output">Claude output</button>
-      <button class="chip" data-target="commands">Commands</button>
-      <button class="chip" data-target="toolout">Tool output</button>
-    </div>
+    <select id="scope" class="scope" title="Search scope">
+      <option value="global">All projects</option>
+      <option value="project">This project</option>
+      <option value="session">This session</option>
+    </select>
     <span id="live" class="livedot" title="Live — index auto-updates"></span>
     <div class="more">
       <button id="morebtn" class="iconbtn" title="More">⋯</button>
@@ -61,7 +56,20 @@
     </section>
     <div class="resizer" id="rz-list" title="Drag to resize"></div>
     <section class="detail" id="detail">
-      <div class="empty">Select a session, or search across everything.</div>
+      <div class="emptyflow" id="emptyflow">
+        <div class="ef-head">
+          <div class="ef-title" id="ef-title">Search your sessions</div>
+          <div class="ef-sub">Everything Claude Code and Codex did on this machine, indexed locally.</div>
+        </div>
+        <div class="ef-steps">
+          <div class="ef-step"><span class="ef-ico i-search">⌕</span><span class="ef-k">Search</span><span class="ef-d">a phrase, path, or command</span></div>
+          <span class="ef-arrow">→</span>
+          <div class="ef-step"><span class="ef-ico i-locate">◎</span><span class="ef-k">Locate</span><span class="ef-d">jump to the exact message</span></div>
+          <span class="ef-arrow">→</span>
+          <div class="ef-step"><span class="ef-ico i-act">✱</span><span class="ef-k">Act</span><span class="ef-d">open in your IDE, or copy</span></div>
+        </div>
+        <div class="ef-tries" id="ef-tries"></div>
+      </div>
     </section>
   </main>
 

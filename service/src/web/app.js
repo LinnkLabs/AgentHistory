@@ -91,10 +91,24 @@ async function copyWithToast(text, label) {
 }
 
 // ================= data load =================
+/** Empty state (design 2h): real corpus size + clickable example queries. */
+function fillEmptyFlow(stats) {
+  const t = $('#ef-title');
+  if (t && stats) t.textContent = `Search ${stats.sessions.toLocaleString()} sessions across ${stats.projects} projects`;
+  const box = $('#ef-tries');
+  if (!box || box.childElementCount) return;
+  for (const q of ['npm publish', 'migration plan', 'auth']) {
+    const b = el('button', 'ef-try', `“${q}”`);
+    b.onclick = () => { const i = $('#q'); i.value = q; i.dispatchEvent(new Event('input', { bubbles: true })); i.focus(); };
+    box.appendChild(b);
+  }
+}
+
 async function loadOverview() {
   const [stats, data] = await Promise.all([getJSON('/api/stats'), getJSON('/api/sessions')]);
   state.projects = data.projects; state.sessions = data.sessions;
   $('#stats').textContent = `${stats.sessions} sessions · ${stats.projects} projects · ${stats.messages.toLocaleString()} messages`;
+  fillEmptyFlow(stats);
   renderRail(); renderBrowse();
 }
 function sessionsForProject(p) { return p == null ? state.sessions : state.sessions.filter((s) => s.project === p); }
@@ -193,14 +207,6 @@ function bindSearch() {
     else if (v === 'project') setScope('project', state.scopeId || state.project);
     else if (v === 'session') setScope('session', state.sessionId);
     if (state.query) doSearch();
-  });
-  $('#targets').addEventListener('click', (e) => {
-    const btn = e.target.closest('.chip'); if (!btn) return;
-    state.target = btn.dataset.target;
-    document.querySelectorAll('.chip').forEach((c) => c.classList.toggle('active', c === btn));
-    syncTypesToChip(state.target);        // chips drive the transcript's type checkboxes too
-    if (state.query) doSearch();          // filters the search Messages group
-    if (state.sessionId) rerenderTranscript(); // filters the open transcript (works while just browsing)
   });
 }
 function exitSearch() { state.mode = 'browse'; state.query = ''; setScope('global'); syncScopeSelect(); renderRail(); renderBrowse(); }
@@ -318,12 +324,12 @@ function addGroup(box, key, label, count, note, buildItems) {
 // Message-type visibility (multi-select checkboxes in the transcript header).
 // This is the single filter for the transcript; the global chips sync it when clicked.
 const MSG_TYPES = [
-  { key: 'user', label: 'You' },
-  { key: 'claude', label: 'Claude' },
-  { key: 'thinking', label: 'Thinking' },
-  { key: 'tool_use', label: 'Commands' },
-  { key: 'tool_result', label: 'Tool output' },
-  { key: 'system', label: 'System' },
+  { key: 'user', label: 'You', short: 'You' },
+  { key: 'claude', label: 'Claude', short: 'Claude' },
+  { key: 'thinking', label: 'Thinking', short: 'Think' },
+  { key: 'tool_use', label: 'Commands', short: 'Cmds' },
+  { key: 'tool_result', label: 'Tool output', short: 'Output' },
+  { key: 'system', label: 'System', short: 'System' },
 ];
 const ALL_TYPE_KEYS = MSG_TYPES.map((t) => t.key);
 function typeKey(m) {
@@ -343,10 +349,12 @@ function loadMsgTypes() {
 }
 state.msgTypes = loadMsgTypes();
 function saveMsgTypes() { localStorage.setItem('am-msgtypes', JSON.stringify([...state.msgTypes])); }
-/** Global chip → checkbox sync, so the old "chip filters the transcript" behavior still holds. */
-function syncTypesToChip(target) {
-  const map = { all: ALL_TYPE_KEYS, input: ['user'], output: ['claude'], commands: ['tool_use'], toolout: ['tool_result'] };
-  if (map[target]) { state.msgTypes = new Set(map[target]); saveMsgTypes(); }
+/** The view strip is now the single filter: mirror it onto the server-side search target. */
+function syncTargetToTypes() {
+  const t = state.msgTypes;
+  const only = (k) => t.size === 1 && t.has(k);
+  state.target = only('user') ? 'input' : only('claude') ? 'output'
+    : only('tool_use') ? 'commands' : only('tool_result') ? 'toolout' : 'all';
 }
 
 async function openSession(id, opts = {}) {
@@ -393,52 +401,59 @@ function renderTranscript(s, messages, targetMi) {
   info.appendChild(el('span', 'sep', '·')); info.appendChild(el('span', null, rel(s.lastActivityMs)));
   head.appendChild(info);
 
+  // ---- ACT zone: exactly one primary; secondary quiet; tertiary in ⋯ (design 2a) ----
   const actions = el('div', 'dactions');
   const resume = `cd ${JSON.stringify(s.cwd || '.')} && claude --resume ${s.sessionId}`;
   const openBtn = mkBtn('✱ Open in Claude Code', () => openInClaudeCode(s));
   openBtn.classList.add('primary');
   actions.appendChild(openBtn);
   actions.appendChild(mkBtn('⧉ Copy resume', () => copyWithToast(resume, 'Resume command copied')));
-  actions.appendChild(mkBtn('⧉ Copy path', () => copyWithToast(s.cwd || '', 'Path copied')));
-  actions.appendChild(mkBtn('◱ Reveal folder', () => { fetch('/api/reveal', { method: 'POST', body: JSON.stringify({ path: s.cwd }) }); }));
-  if (state.openMatches.length) {
-    const nav = el('span', 'matchnav');
-    nav.appendChild(mkBtn('◂', () => stepMatch(-1)));
-    const label = el('span', 'mn-label', `${state.matchPos + 1}/${state.openMatches.length} matches`);
-    nav.appendChild(label); nav.appendChild(mkBtn('▸', () => stepMatch(1)));
-    actions.appendChild(nav);
-  }
+  const moreBtn = mkBtn('⋯', (e) => sessionMenu(e, s, resume));
+  moreBtn.classList.add('ghost'); moreBtn.title = 'More actions';
+  actions.appendChild(moreBtn);
   head.appendChild(actions);
+  detail.appendChild(head);
 
-  // message-type filter bar (checkboxes with counts; only types present in this session)
+  // ---- VIEW strip: docked to the transcript, sticky while scrolling (design 2b) ----
   const counts = {};
   for (const m of messages) counts[typeKey(m)] = (counts[typeKey(m)] || 0) + 1;
-  const typebar = el('div', 'typebar');
-  typebar.appendChild(el('span', 'tb-label', 'Show:'));
-  for (const t of MSG_TYPES) {
-    if (!counts[t.key]) continue;
-    const on = state.msgTypes.has(t.key);
-    const b = el('label', 'typechk' + (on ? ' on' : ''));
-    const cb = el('input'); cb.type = 'checkbox'; cb.checked = on;
-    cb.onchange = () => {
-      cb.checked ? state.msgTypes.add(t.key) : state.msgTypes.delete(t.key);
-      if (!state.msgTypes.size) state.msgTypes.add(t.key); // never allow an all-hidden transcript
-      saveMsgTypes();
-      rerenderTranscript({ preserveScroll: true });
-    };
-    b.appendChild(cb);
-    b.appendChild(el('span', 'tc-label', t.label));
-    b.appendChild(el('span', 'tc-count', String(counts[t.key])));
-    typebar.appendChild(b);
+  const present = MSG_TYPES.filter((t) => counts[t.key]);
+  const allOn = state.msgTypes.size >= present.length;
+  const strip = el('div', 'viewstrip');
+  strip.appendChild(el('span', 'vs-label', 'View'));
+  const seg = el('div', 'seg');
+  const allBtn = el('button', 'seg-item' + (allOn ? ' on' : ''), 'All');
+  allBtn.onclick = () => { state.msgTypes = new Set(ALL_TYPE_KEYS); saveMsgTypes(); syncTargetToTypes(); rerenderTranscript({ preserveScroll: true }); if (state.query) doSearch(); };
+  seg.appendChild(allBtn);
+  const PRIMARY = ['user', 'claude', 'tool_use'];   // the rest fold into the strip's own ⋯
+  for (const t of present.filter((t) => PRIMARY.includes(t.key))) {
+    const on = !allOn && state.msgTypes.has(t.key);
+    const b = el('button', 'seg-item' + (on ? ' on' : ''));
+    b.appendChild(document.createTextNode(t.short || t.label));
+    b.appendChild(el('span', 'seg-n', String(counts[t.key])));
+    b.onclick = () => toggleType(t.key, present);
+    seg.appendChild(b);
   }
-  const onlyNote = state.msgTypes.size < MSG_TYPES.filter((t) => counts[t.key]).length;
-  if (onlyNote) {
-    const reset = el('button', 'btn tb-reset', 'Show all');
-    reset.onclick = () => { state.msgTypes = new Set(ALL_TYPE_KEYS); saveMsgTypes(); rerenderTranscript({ preserveScroll: true }); };
-    typebar.appendChild(reset);
+  const rest = present.filter((t) => !PRIMARY.includes(t.key));
+  if (rest.length) {
+    const more = el('button', 'seg-item seg-more', '⋯');
+    more.title = rest.map((t) => `${t.label} (${counts[t.key]})`).join(' · ');
+    more.onclick = (e) => typeMenu(e, rest, counts, present);
+    if (rest.some((t) => !allOn && state.msgTypes.has(t.key))) more.classList.add('on');
+    seg.appendChild(more);
   }
-  head.appendChild(typebar);
-  detail.appendChild(head);
+  strip.appendChild(seg);
+  strip.appendChild(el('span', 'vs-spacer'));
+  if (state.openMatches.length) {
+    const nav = el('div', 'matchnav');
+    if (state.query) nav.appendChild(el('span', 'mn-q', state.query));
+    nav.appendChild(el('span', 'mn-count', `${state.matchPos + 1}/${state.openMatches.length}`));
+    const prev = el('button', 'mn-btn', '◂'); prev.onclick = () => stepMatch(-1);
+    const next = el('button', 'mn-btn', '▸'); next.onclick = () => stepMatch(1);
+    nav.appendChild(prev); nav.appendChild(next);
+    strip.appendChild(nav);
+  }
+  detail.appendChild(strip);
 
   const msgs = el('div', 'msgs');
   const matchSet = new Set(state.openMatches);
@@ -450,6 +465,51 @@ function renderTranscript(s, messages, targetMi) {
   // defer to next frame so layout is flushed (hundreds of rows just inserted) before scrolling
   if (targetMi != null) requestAnimationFrame(() => scrollToMatch(targetMi));
 }
+/** Tertiary session actions (design 2a: T = Copy path, Reveal folder …). */
+function sessionMenu(e, s, resume) {
+  popMenu(e, [
+    ['⧉ Copy path', () => copyWithToast(s.cwd || '', 'Path copied')],
+    ['◱ Reveal folder', () => { fetch('/api/reveal', { method: 'POST', body: JSON.stringify({ path: s.cwd }) }); }],
+    ['⧉ Copy resume command', () => copyWithToast(resume, 'Resume command copied')],
+    ['⧉ Copy session id', () => copyWithToast(s.sessionId, 'Session id copied')],
+  ]);
+}
+/** Overflow for the less-used message types inside the view strip. */
+function typeMenu(e, rest, counts, present) {
+  popMenu(e, rest.map((t) => [
+    `${state.msgTypes.has(t.key) ? '✓ ' : '   '}${t.label}  (${counts[t.key]})`,
+    () => toggleType(t.key, present),
+  ]));
+}
+/** Toggle one message type. From "All", a click isolates that type (segmented-control semantics). */
+function toggleType(key, present) {
+  const allOn = state.msgTypes.size >= present.length;
+  if (allOn) state.msgTypes = new Set([key]);
+  else if (state.msgTypes.has(key)) {
+    state.msgTypes.delete(key);
+    if (!state.msgTypes.size) state.msgTypes = new Set(ALL_TYPE_KEYS); // never all-hidden
+  } else state.msgTypes.add(key);
+  saveMsgTypes();
+  syncTargetToTypes();
+  rerenderTranscript({ preserveScroll: true });
+  if (state.query) doSearch();   // keep the Messages group in step with the view filter
+}
+/** Shared popup menu (used by the board cards too). */
+function popMenu(e, items) {
+  document.querySelectorAll('.bmenu').forEach((m) => m.remove());
+  const m = el('div', 'bmenu');
+  for (const [label, fn] of items) {
+    const b = el('button', 'bmenu-item', label);
+    b.onclick = () => { m.remove(); fn(); };
+    m.appendChild(b);
+  }
+  document.body.appendChild(m);
+  const r = e.currentTarget ? e.currentTarget.getBoundingClientRect() : e.target.getBoundingClientRect();
+  m.style.left = Math.min(r.left, window.innerWidth - 250) + 'px';
+  m.style.top = Math.min(r.bottom + 4, window.innerHeight - m.offsetHeight - 8) + 'px';
+  setTimeout(() => document.addEventListener('click', () => m.remove(), { once: true }), 0);
+}
+
 function rerenderTranscript(opts = {}) { // re-apply filters to the already-open transcript
   if (!state.openMeta) return;
   const detail = $('#detail');
@@ -507,6 +567,10 @@ function messageRow(m, q, isMatch, isTarget) {
   h.appendChild(el('span', 'who ' + m.role, whoLabel(m.role)));
   if (m.kind !== 'text') h.appendChild(el('span', 'mkind', m.kind.replace('_', ' ')));
   if (m.model) { const mm = el('span', 'mmodel', shortModel(m.model)); mm.title = m.model; h.appendChild(mm); }
+  h.appendChild(el('span', 'mspacer'));
+  if (isTarget && state.openMatches.length) {
+    h.appendChild(el('span', 'mmatch', `MATCH ${state.matchPos + 1}/${state.openMatches.length}`));
+  }
   const cp = el('button', 'mcopy', '⧉ copy'); cp.title = 'Copy this message';
   cp.onclick = (e) => { e.stopPropagation(); copyWithToast(m.text || '', 'Message copied'); };
   h.appendChild(cp);
@@ -778,6 +842,8 @@ function initTabs() {
   // ⋯ overflow menu (Insights / Portrait / theme / stats)
   $('#morebtn').addEventListener('click', (e) => { e.stopPropagation(); $('#moremenu').hidden = !$('#moremenu').hidden; });
   document.addEventListener('click', (e) => { if (!e.target.closest('.more')) $('#moremenu').hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') $('#moremenu').hidden = true; });
+  window.addEventListener('resize', () => { $('#moremenu').hidden = true; });
   // Sessions is the home view (search-first librarian). One-time migration for stored 'now' defaults.
   if (!localStorage.getItem('am-view-v2')) { localStorage.setItem('am-view-v2', '1'); localStorage.setItem('am-view', 'sessions'); }
   switchView(localStorage.getItem('am-view') || 'sessions');
@@ -1032,6 +1098,7 @@ function bindResizer(rz, pane, min, max, key) {
 }
 
 initTheme();
+syncTargetToTypes();   // persisted view filter defines the initial search target
 initNarrow();
 initResizers();
 bindSearch();
