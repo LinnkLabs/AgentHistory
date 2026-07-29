@@ -33,6 +33,13 @@ function rel(ms) {
   return new Date(ms).toLocaleDateString();
 }
 function abs(ts) { if (!ts) return ''; const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleString(); }
+/** 1217 -> "1.2k" so a 4-digit count can't inflate every filter tab. */
+function compactN(n) {
+  n = Number(n) || 0;
+  if (n < 1000) return String(n);
+  if (n < 999500) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'm';
+}
 function shortModel(m) { return String(m || '').replace(/^claude-/, '').replace(/-\d{6,}$/, ''); }
 function tokens(q) { return (q || '').trim().split(/\s+/).filter((t) => t.length).map((t) => t.replace(/["*]/g, '')).filter(Boolean); }
 function matchesAll(text, toks) { const s = String(text || '').toLowerCase(); return toks.every((t) => s.includes(t.toLowerCase())); }
@@ -54,8 +61,9 @@ function showList() { document.body.classList.remove('show-detail'); }
 function initNarrow() {
   $('#railtoggle').addEventListener('click', () => document.body.classList.toggle('show-rail'));
   $('#rail').addEventListener('click', (e) => { if (isRailDrawer() && e.target.closest('.proj')) document.body.classList.remove('show-rail'); });
-  window.matchMedia('(max-width: 720px)').addEventListener('change', (m) => { if (!m.matches) showList(); });
-  window.matchMedia('(max-width: 1040px)').addEventListener('change', () => document.body.classList.remove('show-rail'));
+  // Each breakpoint flip changes which panes are in flow, so re-clamp the saved widths to match.
+  window.matchMedia('(max-width: 720px)').addEventListener('change', (m) => { if (!m.matches) showList(); applyPaneWidths(); });
+  window.matchMedia('(max-width: 1040px)').addEventListener('change', () => { document.body.classList.remove('show-rail'); applyPaneWidths(); });
 }
 function hlIf(text) { return (state.mode === 'search' && state.query) ? highlight(text, state.query) : esc(text); }
 
@@ -431,8 +439,9 @@ function renderTranscript(s, messages, targetMi) {
   for (const t of present.filter((t) => PRIMARY.includes(t.key))) {
     const on = !allOn && state.msgTypes.has(t.key);
     const b = el('button', 'seg-item' + (on ? ' on' : ''));
+    b.title = `${t.label} (${counts[t.key]})`;   // exact count stays available on hover
     b.appendChild(document.createTextNode(t.short || t.label));
-    b.appendChild(el('span', 'seg-n', String(counts[t.key])));
+    b.appendChild(el('span', 'seg-n', compactN(counts[t.key])));
     b.onclick = () => toggleType(t.key, present);
     seg.appendChild(b);
   }
@@ -1072,28 +1081,64 @@ function bindDrop(lane, status) {
   });
 }
 
-// draggable pane resizers (persisted widths)
-function initResizers() {
-  const rail = $('#rail'), listcol = document.querySelector('.listcol');
-  const saved = (() => { try { return JSON.parse(localStorage.getItem('am-panes') || '{}'); } catch { return {}; } })();
-  if (saved.rail) rail.style.flexBasis = saved.rail + 'px';
-  if (saved.list) listcol.style.flexBasis = saved.list + 'px';
-  bindResizer($('#rz-rail'), rail, 150, 420, 'rail');
-  bindResizer($('#rz-list'), listcol, 260, 760, 'list');
+// ---- draggable pane resizers ----------------------------------------------------------------
+// Widths are stored as raw px, but an inline flex-basis BEATS the media queries — so a width chosen
+// in a wide browser used to leak into a ~760px VS Code panel and crush the transcript to ~65px.
+// applyPaneWidths() is therefore the single authority: it re-clamps the stored preference to the
+// CURRENT viewport on load, on resize, and on every breakpoint flip, without ever overwriting what
+// the user actually chose.
+const MIN_DETAIL = 360;   // the transcript never gets smaller than this
+const MIN_LIST = 240, MIN_RAIL = 150, MAX_RAIL = 420;
+
+function readPanes() { try { return JSON.parse(localStorage.getItem('am-panes') || '{}'); } catch { return {}; } }
+function writePane(key, px) {
+  const s = readPanes(); s[key] = Math.round(px);
+  localStorage.setItem('am-panes', JSON.stringify(s));
 }
-function bindResizer(rz, pane, min, max, key) {
-  if (!rz) return;
+/** Widest the list may be right now, given the rail's real footprint and the transcript's floor. */
+function maxListWidth() {
+  const rail = $('#rail');
+  const railW = (!isRailDrawer() && rail) ? rail.getBoundingClientRect().width : 0;  // drawer = out of flow
+  return Math.max(MIN_LIST, window.innerWidth - railW - MIN_DETAIL);
+}
+/** Re-apply the saved widths, clamped to what actually fits at this size. */
+function applyPaneWidths() {
+  const rail = $('#rail'), listcol = document.querySelector('.listcol');
+  if (!listcol) return;
+  const saved = readPanes();
+  if (isNarrow()) {                       // single-column drill-down owns the layout
+    listcol.style.flexBasis = ''; if (rail) rail.style.flexBasis = '';
+    return;
+  }
+  if (rail) rail.style.flexBasis = isRailDrawer() ? ''   // drawer is absolutely positioned
+    : (saved.rail ? Math.min(MAX_RAIL, Math.max(MIN_RAIL, saved.rail)) + 'px' : '');
+  listcol.style.flexBasis = saved.list
+    ? Math.min(maxListWidth(), Math.max(MIN_LIST, saved.list)) + 'px'
+    : '';                                 // no preference yet → let the stylesheet decide
+}
+
+function initResizers() {
+  applyPaneWidths();
+  bindResizer($('#rz-rail'), $('#rail'), 'rail', () => MIN_RAIL, () => MAX_RAIL);
+  bindResizer($('#rz-list'), document.querySelector('.listcol'), 'list', () => MIN_LIST, maxListWidth);
+  let t; window.addEventListener('resize', () => { clearTimeout(t); t = setTimeout(applyPaneWidths, 100); });
+}
+function bindResizer(rz, pane, key, minFn, maxFn) {
+  if (!rz || !pane) return;
   rz.addEventListener('mousedown', (e) => {
     e.preventDefault();
     const startX = e.clientX, startW = pane.getBoundingClientRect().width;
+    const min = minFn(), max = maxFn();          // limits are computed per drag, not hardcoded
     document.body.classList.add('resizing'); rz.classList.add('dragging');
-    const move = (ev) => { pane.style.flexBasis = Math.min(max, Math.max(min, startW + ev.clientX - startX)) + 'px'; };
+    let want = startW;
+    const move = (ev) => {
+      want = Math.min(max, Math.max(min, startW + ev.clientX - startX));
+      pane.style.flexBasis = want + 'px';
+    };
     const up = () => {
       document.removeEventListener('mousemove', move); document.removeEventListener('mouseup', up);
       document.body.classList.remove('resizing'); rz.classList.remove('dragging');
-      let s = {}; try { s = JSON.parse(localStorage.getItem('am-panes') || '{}'); } catch { /* */ }
-      s[key] = Math.round(pane.getBoundingClientRect().width);
-      localStorage.setItem('am-panes', JSON.stringify(s));
+      writePane(key, want);                      // persist what was REQUESTED, not what rendered
     };
     document.addEventListener('mousemove', move); document.addEventListener('mouseup', up);
   });
