@@ -48,12 +48,14 @@ function highlight(text, q) {
 function toast(msg) { let t = $('#toast'); if (!t) { t = el('div', 'toast'); t.id = 'toast'; document.body.appendChild(t); } t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1400); }
 
 // narrow mode (VS Code sidebar / phone): single column with list⇄detail drill-down + rail drawer
-const isNarrow = () => window.matchMedia('(max-width: 720px)').matches;
+const isNarrow = () => window.matchMedia('(max-width: 720px)').matches;      // single-column drill-down
+const isRailDrawer = () => window.matchMedia('(max-width: 1040px)').matches;  // rail collapses to a ☰ drawer
 function showList() { document.body.classList.remove('show-detail'); }
 function initNarrow() {
   $('#railtoggle').addEventListener('click', () => document.body.classList.toggle('show-rail'));
-  $('#rail').addEventListener('click', (e) => { if (isNarrow() && e.target.closest('.proj')) document.body.classList.remove('show-rail'); });
-  window.matchMedia('(max-width: 720px)').addEventListener('change', (m) => { if (!m.matches) { showList(); document.body.classList.remove('show-rail'); } });
+  $('#rail').addEventListener('click', (e) => { if (isRailDrawer() && e.target.closest('.proj')) document.body.classList.remove('show-rail'); });
+  window.matchMedia('(max-width: 720px)').addEventListener('change', (m) => { if (!m.matches) showList(); });
+  window.matchMedia('(max-width: 1040px)').addEventListener('change', () => document.body.classList.remove('show-rail'));
 }
 function hlIf(text) { return (state.mode === 'search' && state.query) ? highlight(text, state.query) : esc(text); }
 
