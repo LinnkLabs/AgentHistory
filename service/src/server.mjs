@@ -9,7 +9,7 @@ import { openStore } from './store.mjs';
 import { reconcile } from './indexer.mjs';
 import { indexCoworkAll } from './cowork.mjs';
 import { indexCodexAll } from './codex.mjs';
-import { isCustomTree } from './paths.mjs';
+import { isCustomTree, claudeProjectsDir } from './paths.mjs';
 import { retroReport, readBook, buildBook, extractSessions, callsUsedToday, DAILY_CALL_LIMIT } from './persona.mjs';
 import { buildBoard, pidAlive } from './taskboard.mjs';
 import { runClassify, classifyPreview } from './classify.mjs';
@@ -140,7 +140,8 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
       // ---- API ----
       if (p === '/favicon.ico') { res.writeHead(204); res.end(); return; }
       if (p === '/api/version') return sendJSON(res, 200, { version, lastChangeMs });
-      if (p === '/api/stats') return sendJSON(res, 200, store.stats());
+      // transcriptRoot lets the UI name the exact directory it scanned when nothing was found
+      if (p === '/api/stats') return sendJSON(res, 200, { ...store.stats(), transcriptRoot: claudeProjectsDir(), customTree: isCustomTree() });
 
       if (p === '/api/sessions') {
         // O1: organized overview — projects + sessions, filtered.

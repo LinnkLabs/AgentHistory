@@ -454,3 +454,8 @@ body.resizing { cursor: col-resize; user-select: none; }
   .matchnav { border: none; background: none; padding: 0; gap: 4px; }
   .mn-q { display: none; }
 }
+
+/* zero-session empty state: a quiet explanatory note instead of dead example queries */
+.ef-note { font-size: 11.5px; line-height: 1.6; color: var(--faint); max-width: 560px; text-align: center; }
+.ef-note code, .ef-sub code { font-size: 11px; background: var(--bg3); border: 1px solid var(--line);
+                              border-radius: 5px; padding: 1px 5px; color: var(--dim); }

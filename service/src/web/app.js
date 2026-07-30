@@ -103,9 +103,39 @@ async function copyWithToast(text, label) {
 // ================= data load =================
 /** Empty state (design 2h): real corpus size + clickable example queries. */
 function fillEmptyFlow(stats) {
-  const t = $('#ef-title');
-  if (t && stats) t.textContent = `Search ${stats.sessions.toLocaleString()} sessions across ${stats.projects} projects`;
-  const box = $('#ef-tries');
+  const t = $('#ef-title'), sub = document.querySelector('.ef-sub'), box = $('#ef-tries');
+  if (!t || !stats) return;
+
+  // Nothing indexed: the search-first onboarding would be a dead end (its example queries return
+  // nothing and it never says WHY). Explain what was scanned and how to point somewhere else —
+  // the realistic case isn't a brand-new user, it's a custom CLAUDE_CONFIG_DIR or a Codex-only setup.
+  if (!stats.sessions) {
+    t.textContent = 'No sessions indexed yet';
+    const root = stats.transcriptRoot || '~/.claude/projects';
+    if (sub) {
+      sub.innerHTML = `Nothing was found in <code>${esc(root)}</code>` +
+        (stats.customTree ? ' (set via <code>CLAUDE_TRANSCRIPT_PATH</code>)' : '') + '.';
+    }
+    const steps = document.querySelector('.ef-steps');
+    if (steps) {
+      steps.innerHTML =
+        '<div class="ef-step"><span class="ef-ico i-search">1</span><span class="ef-k">Use an agent</span>' +
+        '<span class="ef-d">run Claude Code or Codex once — transcripts are written as you work</span></div>' +
+        '<span class="ef-arrow">→</span>' +
+        '<div class="ef-step"><span class="ef-ico i-locate">2</span><span class="ef-k">Re-index</span>' +
+        '<span class="ef-d"><code>agent-history-cli index</code>, or just reload</span></div>';
+    }
+    if (box) {
+      box.innerHTML = '';
+      const hint = el('div', 'ef-note');
+      hint.innerHTML = 'Transcripts somewhere else? Point at them with ' +
+        '<code>CLAUDE_TRANSCRIPT_PATH=/path/to/projects agent-history-cli</code>';
+      box.appendChild(hint);
+    }
+    return;
+  }
+
+  t.textContent = `Search ${stats.sessions.toLocaleString()} sessions across ${stats.projects} projects`;
   if (!box || box.childElementCount) return;
   for (const q of ['npm publish', 'migration plan', 'auth']) {
     const b = el('button', 'ef-try', `“${q}”`);

@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 // agenthistory — every agent session, one board (organize / search / locate / act).
-import { openStore } from '../src/store.mjs';
-import { indexAll } from '../src/indexer.mjs';
-import { indexCoworkAll } from '../src/cowork.mjs';
-import { indexCodexAll } from '../src/codex.mjs';
-import { isCustomTree } from '../src/paths.mjs';
+
+// Runtime guard FIRST. `engines` only makes npm print a warning, and on an older Node the real
+// failure is better-sqlite3 falling back to a node-gyp build — a wall of C++ errors that reads like
+// the tool is broken. The store modules are therefore imported lazily, inside main(), so this
+// message is what an unsupported runtime actually sees.
+const MIN_NODE = 20;
+if (Number(process.versions.node.split('.')[0]) < MIN_NODE) {
+  console.error(
+    `\n  Agent History needs Node ${MIN_NODE} or newer — this is Node ${process.versions.node}.\n\n` +
+    `  Install a current LTS, then re-run:\n` +
+    `    nvm install ${MIN_NODE} && nvm use ${MIN_NODE}      (or download from https://nodejs.org)\n` +
+    `    npx agent-history-cli\n`);
+  process.exit(1);
+}
 
 const argv = process.argv.slice(2);
 // No command (or only flags) = "up": refresh the index, then open the dashboard. `npx agent-history-cli` just works.
@@ -43,6 +52,11 @@ function rel(ms) {
 }
 
 async function main() {
+  // lazy: nothing native loads until after the version guard above has passed
+  const [{ openStore }, { indexAll }, { indexCoworkAll }, { indexCodexAll }, { isCustomTree }] = await Promise.all([
+    import('../src/store.mjs'), import('../src/indexer.mjs'), import('../src/cowork.mjs'),
+    import('../src/codex.mjs'), import('../src/paths.mjs'),
+  ]);
   if (cmd === 'help' || cmd === '--help' || cmd === '-h') {
     console.log(`agenthistory — every agent session, one board (Claude Code + Codex, 100% local)
 
