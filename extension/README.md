@@ -1,63 +1,100 @@
-# Agent History — VS Code / Cursor extension
+# Agent History
 
-Brings the Agent History dashboard (organize · search · locate your Claude sessions) into an
-activity-bar panel. It is a **thin client**: it reuses a running `agent-manager` service, and if
-none is running it **auto-spawns** the sibling service, then embeds the dashboard.
+**Every agent session, one board.** Search, locate, and reopen every **Claude Code** and **Codex**
+session — without leaving your editor. 100% local, read-only, no account, no telemetry.
 
-## Behaviour
+![Agent History in the Sessions view](https://raw.githubusercontent.com/LinnkLabs/AgentHistory/main/docs/sessions.png)
 
-1. On activation it health-checks `http://127.0.0.1:<port>/api/stats`.
-2. If reachable → embeds it. If not → spawns the service (detached, shared with the browser) and waits.
-3. **Workspace-scoped** by default: opens focused on the current workspace folder's project
-   (toggle in the view title to show all projects).
+## Why
 
-## Commands (view title + palette)
+Your agent sessions pile up across terminal windows, IDE tabs, and thousands of transcript files.
+Some are finished, some are waiting on you, some are still running — and the one useful thing you
+remember is a phrase someone typed three weeks ago. Agent History reads what the agents already
+wrote to disk and makes it searchable, locatable, and re-openable.
 
-- **Agent History: Toggle workspace scope**
-- **Agent History: Open dashboard in browser**
-- **Agent History: Reindex sessions**
-- **Agent History: Restart service**
+## What you get
+
+- **Search everything** — full-text (BM25) across *every* message: your prompts, the agent's
+  output, the commands it ran, and tool results. Filter by project, session, or message type.
+- **Locate the exact message** — a hit shows `project › session › message` and jumps you straight
+  to it, keyword highlighted, with a ◂ n/m ▸ navigator through the matches in that session.
+- **Act on it** — one click reopens the session in Claude Code (it focuses the right window and
+  resumes there), or copies the resume command, the folder path, or the message text.
+- **A "Now" board** — your sessions as live task cards: Active (detected from real processes),
+  Waiting on you, In progress, Recurring, Paused.
+- **History that outlives cleanup** — Claude Code prunes transcripts after ~30 days; anything
+  indexed once stays searchable here.
+
+![The Now board](https://raw.githubusercontent.com/LinnkLabs/AgentHistory/main/docs/board.png)
+
+## Requirements
+
+- **Node.js 20+** on your PATH — the extension runs the indexer as a normal Node process
+  (`npx agent-history-cli`), which is also what keeps the native SQLite module working.
+- Existing **Claude Code** and/or **Codex** history on this machine.
+
+Nothing else. No API key, no sign-in, no configuration.
+
+## Getting started
+
+1. Install the extension and **reload the window**.
+2. Click the Agent History icon in the activity bar.
+3. It starts the local service automatically and indexes your sessions (about 20s the first time
+   for a few hundred sessions; instant afterwards — it's incremental).
+4. Type in the search box.
+
+The panel is workspace-scoped by default; toggle the filter icon in the view title to see every
+project. The **`⤢`** action opens the same dashboard in a browser when you want the full
+three-pane layout.
+
+## What it reads
+
+| Source | Location |
+|---|---|
+| Claude Code (CLI + IDE extension) | `~/.claude/projects/**/*.jsonl` |
+| Claude desktop (Cowork / local agents) | `~/Library/Application Support/Claude/…` |
+| Codex (CLI / ChatGPT desktop) | `~/.codex/sessions/**` |
+
+All read-only. Agent History never modifies a transcript.
+
+## Privacy
+
+- **Local only.** The index is a SQLite file in `~/.claude/.agent-manager/`. No server, no account,
+  no telemetry, and no network calls for any core feature.
+- **AI features are opt-in and metered.** "Refine with AI" runs through *your own* logged-in
+  `claude` or `codex` CLI, tells you exactly how many calls it will make before running, is capped
+  per day, and sends only short conversation excerpts — never tool output.
 
 ## Settings
 
-- `agentHistory.port` (default `4600`)
-- `agentHistory.serviceEntry` — path to the service's `bin/agent-manager.mjs`. Empty = auto-detect the
-  sibling `../service` package, else fall back to `npx agent-manager`.
-- `agentHistory.scopeToWorkspace` (default `true`)
+| Setting | Default | Description |
+|---|---|---|
+| `agentHistory.port` | `4600` | Port for the local service |
+| `agentHistory.nodePath` | `node` | Absolute Node path if `node` isn't on your editor's PATH (common with nvm) |
+| `agentHistory.scopeToWorkspace` | `true` | Start scoped to the open workspace folder |
+| `agentHistory.serviceEntry` | `""` | Point at a local checkout instead of the published CLI |
 
-## Test locally
-
-**Prereqs (once):** the service must have its deps + an index built, with the same system Node the
-extension will spawn:
-
-```bash
-cd "../service" && npm install && node bin/agent-manager.mjs index
-```
-
-### Option A — Run from source (F5, zero config) ✅ recommended
-
-1. Open **this `extension/` folder** as the VS Code / Cursor workspace root.
-2. Press **F5** → an Extension Development Host window opens with the extension loaded.
-3. Click the Agent History icon in the activity bar. The dashboard embeds; the service auto-starts.
-
-`../service` is auto-detected, so no settings are needed.
-
-### Option B — Install the packaged `.vsix`
+## Also available as a CLI
 
 ```bash
-code --install-extension agent-history-0.1.0.vsix   # or Cursor: cursor --install-extension …
+npx agent-history-cli
 ```
 
-Because the installed extension no longer sits next to `../service`, set two things in Settings:
+Same app in your browser, plus `search`, `status`, `retro`, and an **MCP server** that lets your
+agents search your own history:
 
-- `agentHistory.serviceEntry` → absolute path to `…/Agent Manager/service/bin/agent-manager.mjs`
-- `agentHistory.nodePath` → `node` (or an absolute path to Node if it isn't on VS Code's PATH — common
-  with GUI launches / nvm). Must be the **same Node that built the service's `better-sqlite3`**.
+```bash
+claude mcp add -s user agent-history -- npx agent-history-cli mcp
+```
 
-## Notes
+## Troubleshooting
 
-- The service runs as a normal **system Node** process (not inside the extension host) — this avoids the
-  Electron-ABI mismatch that would otherwise break the native `better-sqlite3`.
-- Service lifecycle logic lives in `service-control.js` (no `vscode` dependency, unit-testable).
-- MVP scope: reuse-or-auto-spawn + embed. Read-only direct-store fallback is a later step; today the
-  fallback is a clear "service unavailable + retry" panel.
+- **Panel says the service is unavailable** — usually `node` isn't on the editor's PATH (common on
+  macOS GUI launches with nvm). Set `agentHistory.nodePath` to an absolute Node 20+ path.
+- **No sessions found** — the panel names the directory it scanned. If your transcripts live
+  elsewhere, set `CLAUDE_TRANSCRIPT_PATH`.
+
+---
+
+MIT licensed · [Source, issues, and the CLI](https://github.com/LinnkLabs/AgentHistory) ·
+Not affiliated with Anthropic or OpenAI; it reads only your own local files.

@@ -8,15 +8,21 @@
     "vscode": "^1.85.0"
   },
   "categories": [
+    "AI",
+    "Visualization",
     "Other"
   ],
   "keywords": [
     "claude",
     "claude-code",
+    "codex",
+    "agent",
     "session",
     "history",
     "search",
-    "cursor"
+    "transcript",
+    "cursor",
+    "local-first"
   ],
   "activationEvents": [
     "onStartupFinished"
@@ -131,5 +137,11 @@
   "homepage": "https://github.com/LinnkLabs/AgentHistory#readme",
   "bugs": {
     "url": "https://github.com/LinnkLabs/AgentHistory/issues"
-  }
+  },
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#12161f",
+    "theme": "dark"
+  },
+  "qna": "marketplace"
 }
