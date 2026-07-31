@@ -4,6 +4,11 @@
 **Claude Code** and **Codex** sessions — live status, full-text search over every transcript,
 click-to-jump, and one-click resume.
 
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/LinnkLabs.agent-history?label=VS%20Code%20Marketplace&color=3b6fe0)](https://marketplace.visualstudio.com/items?itemName=LinnkLabs.agent-history)
+[![Open VSX](https://img.shields.io/open-vsx/v/LinnkLabs/agent-history?label=Open%20VSX&color=0d9488)](https://open-vsx.org/extension/LinnkLabs/agent-history)
+[![npm](https://img.shields.io/npm/v/agent-history-cli?label=npm&color=cb3837)](https://www.npmjs.com/package/agent-history-cli)
+[![License: MIT](https://img.shields.io/badge/license-MIT-black)](LICENSE)
+
 ```bash
 npx agent-history-cli
 ```
@@ -86,46 +91,31 @@ your past sessions and read your context book live:
 claude mcp add -s user agent-history -- npx agent-history-cli mcp
 ```
 
-## VS Code / Cursor extension
+## VS Code / Cursor / Windsurf extension
 
 The dashboard also ships as an activity-bar panel — a thin client that auto-starts the same local
-service. It isn't on the marketplaces yet, so install the `.vsix` directly from
-[Releases](https://github.com/LinnkLabs/AgentHistory/releases/latest) (this is normal "sideloading";
-both editors support it out of the box).
+service. **Just search "Agent History" in your editor's Extensions view**, or:
 
-**Either editor — from the UI:** open the Extensions view → `…` menu (top-right) →
-**Install from VSIX…** → pick the downloaded file. Or just **drag the `.vsix` onto the Extensions
-panel**.
+| Editor | Install from |
+|---|---|
+| **VS Code** | [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=LinnkLabs.agent-history) — or `code --install-extension LinnkLabs.agent-history` |
+| **Cursor · Windsurf · VSCodium** | [Open VSX](https://open-vsx.org/extension/LinnkLabs/agent-history) — these editors can't use the Microsoft marketplace, and are wired to Open VSX by default |
 
-**Or from the terminal:**
-
-```bash
-# VS Code
-code --install-extension ~/Downloads/agent-history-0.1.2.vsix
-
-# Cursor
-cursor --install-extension ~/Downloads/agent-history-0.1.2.vsix
-
-# Windsurf / other VS Code forks
-windsurf --install-extension ~/Downloads/agent-history-0.1.2.vsix
-```
-
-Then **reload the window** (`Cmd/Ctrl+Shift+P` → *Developer: Reload Window*) and click the Agent
-History icon in the activity bar. The extension reuses a running service, or starts one via
-`npx agent-history-cli` — so nothing else to configure.
+After installing, **reload the window** and click the Agent History icon in the activity bar. It
+reuses a running service or starts one via `npx agent-history-cli` — nothing else to configure.
 
 <details>
 <summary>Notes & troubleshooting</summary>
 
-- If the `code` / `cursor` command isn't found, install it from the palette:
-  *Shell Command: Install 'code' command in PATH* (Cursor has the same entry).
-- Sideloaded extensions **don't auto-update** — grab the newer `.vsix` from Releases and install
-  again (same command; it replaces the old version).
-- Running from a git checkout instead? Point `agentHistory.serviceEntry` at
-  `<repo>/service/bin/agent-manager.mjs`, and set `agentHistory.nodePath` to an absolute Node path if
-  `node` isn't on your editor's PATH (common with nvm + GUI launches).
-- Cursor and other forks can't use the Microsoft marketplace at all, so the `.vsix` (or a future
-  Open VSX listing) is the supported route there.
+- **Requires Node.js 20+ on your PATH.** If the panel says the service is unavailable, that's usually
+  the cause — set `agentHistory.nodePath` to an absolute Node path (common with nvm + GUI launches,
+  where the editor doesn't inherit your shell PATH).
+- Prefer to sideload? The `.vsix` is attached to every
+  [release](https://github.com/LinnkLabs/AgentHistory/releases/latest): Extensions view → `…` →
+  *Install from VSIX…*. Note sideloaded extensions **don't auto-update**, which is the main reason to
+  install from a marketplace instead.
+- Running from a git checkout? Point `agentHistory.serviceEntry` at
+  `<repo>/service/bin/agent-manager.mjs`.
 
 </details>
 
