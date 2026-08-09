@@ -328,6 +328,7 @@ body.light .bcard { background: #fff; }
 .bcard-proj { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--dim); }
 .agent { font-size: 10px; font-weight: 600; border: 1px solid; border-radius: 99px; padding: 0 7px; line-height: 16px; }
 .agent.a-claude { color: var(--assistant); border-color: color-mix(in srgb, var(--assistant) 45%, transparent); }
+.agent.a-ide { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 .agent.a-codex { color: var(--b-codex); border-color: color-mix(in srgb, var(--b-codex) 45%, transparent); }
 .agent.a-cowork { color: var(--toolout); border-color: color-mix(in srgb, var(--toolout) 45%, transparent); }
 .bcard-reason { font-size: 12px; line-height: 1.4; color: var(--dim); }

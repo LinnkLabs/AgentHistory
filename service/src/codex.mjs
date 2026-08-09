@@ -8,8 +8,8 @@
 // Own versioned parser per the two-reader discipline — never shares Claude's type allowlist.
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { SCHEMA_VERSION } from './store.mjs';
+import { codexHomeDir } from './paths.mjs';
 
 const CLAMP = 8 * 1024;
 const clamp = (s) => { const t = String(s || '').trim(); return t.length > CLAMP ? t.slice(0, CLAMP) : t; };
@@ -17,8 +17,28 @@ const clamp = (s) => { const t = String(s || '').trim(); return t.length > CLAMP
 const INJECTED_RE = /^\s*(<(environment_context|permissions[ _]instructions|user_instructions|recommended_plugins|app_context|turn_aborted|AGENTS|ide_context|collaboration_mode|codex_delegation)|#+\s*AGENTS\.md)/i;
 
 export function codexDirs() {
-  const root = path.join(os.homedir(), '.codex');
+  const root = codexHomeDir();
   return { sessions: path.join(root, 'sessions'), archived: path.join(root, 'archived_sessions') };
+}
+
+/**
+ * Codex names its own threads and records them in ~/.codex/session_index.jsonl
+ * ({id, thread_name, updated_at}, most recent only). Those names beat anything we can derive: a
+ * Codex turn often opens with an injected "# Context from my IDE setup:" block, which our
+ * first-user-text heuristic would otherwise adopt as the title. Best-effort — missing file is fine.
+ */
+export function codexThreadNames() {
+  const names = new Map();
+  let raw;
+  try { raw = fs.readFileSync(path.join(codexHomeDir(), 'session_index.jsonl'), 'utf8'); } catch { return names; }
+  for (const line of raw.split('\n')) {
+    const s = line.trim();
+    if (!s) continue;
+    let o; try { o = JSON.parse(s); } catch { continue; }
+    const name = String(o && o.thread_name || '').trim();
+    if (o && o.id && name) names.set(String(o.id), name);   // later lines win: the newest rename
+  }
+  return names;
 }
 
 function walkJsonl(dir, out = [], depth = 0) {
@@ -45,7 +65,7 @@ function textOf(content, types) {
 
 /** Parse one Codex rollout file into our session shape. */
 export function scanCodex(filePath) {
-  const meta = { id: '', cwd: '', gitBranch: '', version: '', model: '', firstTs: '', lastTs: '',
+  const meta = { id: '', cwd: '', gitBranch: '', version: '', model: '', originator: '', firstTs: '', lastTs: '',
     firstUserText: '', endRole: '', endKind: '', endHint: '' };
   const messages = [];
   let raw;
@@ -70,6 +90,9 @@ export function scanCodex(filePath) {
       meta.id = p.id || meta.id;
       meta.cwd = p.cwd || meta.cwd;
       meta.version = p.cli_version || meta.version;
+      // Which Codex surface wrote this ("Codex Desktop" | codex_vscode | codex_exec | …) — the
+      // signal the client registry turns into a real product/surface label.
+      meta.originator = p.originator || meta.originator;
       if (p.git && typeof p.git === 'object' && p.git.branch) meta.gitBranch = p.git.branch;
       continue;
     }
@@ -100,23 +123,28 @@ export function scanCodex(filePath) {
 /** Index all Codex sessions incrementally (skip by size+mtime). Returns {total, indexed, skipped}. */
 export function indexCodexAll(store, { force = false } = {}) {
   const files = enumerateCodex();
+  const threadNames = codexThreadNames();
   let indexed = 0, skipped = 0;
   for (const filePath of files) {
     let st;
     try { st = fs.statSync(filePath); } catch { skipped++; continue; }
     const fromName = path.basename(filePath).match(/([0-9a-f]{8}-[0-9a-f-]{27,})\.jsonl$/i);
-    const fallbackId = 'codex-' + (fromName ? fromName[1] : path.basename(filePath, '.jsonl'));
+    const uuid = fromName ? fromName[1] : path.basename(filePath, '.jsonl');
+    const fallbackId = 'codex-' + uuid;
     const prior = store.getIndexedInfo(fallbackId);
-    if (!force && prior && prior.fileSize === st.size && prior.lastActivityMs === Math.floor(st.mtimeMs)) { skipped++; continue; }
+    if (!force && prior && prior.fileSize === st.size && prior.lastActivityMs === Math.floor(st.mtimeMs)
+        && (prior.parserSchemaVer || 0) >= SCHEMA_VERSION) { skipped++; continue; }
 
     const { messages, meta } = scanCodex(filePath);
     const sessionId = fallbackId; // filename uuid == session_meta.id in practice; filename is stable
     const cwd = meta.cwd || '';
-    const title = (meta.firstUserText || '').split('\n')[0].slice(0, 80) || sessionId.slice(0, 14);
+    const title = threadNames.get(meta.id || uuid)
+      || (meta.firstUserText || '').split('\n')[0].slice(0, 80)
+      || sessionId.slice(0, 14);
     store.writeSession({
       sessionId, source: 'codex', cwd,
       project: cwd ? path.basename(cwd) : '(codex)',
-      gitBranch: meta.gitBranch || '', version: meta.version || '', entrypoint: 'codex',
+      gitBranch: meta.gitBranch || '', version: meta.version || '', entrypoint: meta.originator || 'codex',
       title, model: meta.model || '',
       firstTs: meta.firstTs || '', lastTs: meta.lastTs || '',
       lastActivityMs: Math.floor(st.mtimeMs),

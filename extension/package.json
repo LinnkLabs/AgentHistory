@@ -2,7 +2,7 @@
   "name": "agent-history",
   "displayName": "Agent History \u2014 Claude Sessions",
   "description": "Organize, search, and locate every Claude session (CLI + IDE + desktop) inside VS Code / Cursor. Full history, full-text search, survives the 30-day cleanup.",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "publisher": "LinnkLabs",
   "engines": {
     "vscode": "^1.85.0"

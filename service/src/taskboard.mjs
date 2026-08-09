@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { isCustomTree } from './paths.mjs';
+import { clientOf, resolveClientId } from './clients.mjs';
 
 export function pidAlive(pid) {
   try { process.kill(pid, 0); return true; } catch (e) { return e && e.code === 'EPERM'; }
@@ -40,23 +41,35 @@ const IDLE_SUGGEST_DONE_MS = 3 * D;
 
 const endsWithQuestion = (s) => /\?\s*["'`)\]]*\s*$/.test(String(s || '').trim().slice(-300));
 
-/** Why is this waiting? '' if it isn't. */
+/**
+ * Why is this waiting? `null` if it isn't.
+ * Returns {kind, text}: `kind` drives the decay window below, `text` is display-only and names the
+ * session's own agent. Callers must branch on `kind` — an earlier version tested
+ * `text.startsWith('Claude asked')`, which silently misclassifies the moment the label changes.
+ */
 export function waitingReason(row) {
-  if (row.endKind === 'tool_use' && /^AskUserQuestion\b/.test(row.endHint || '')) return 'Claude asked you a question';
+  const who = clientOf(row).assistant;
+  if (row.endKind === 'tool_use' && /^AskUserQuestion\b/.test(row.endHint || '')) {
+    return { kind: 'question', text: `${who} asked you a question` };
+  }
   if (row.endRole === 'assistant' && row.endKind === 'text' && endsWithQuestion(row.endHint)) {
     const q = String(row.endHint || '').trim();
-    return `Claude asked: “${q.length > 90 ? '…' + q.slice(-88) : q}”`;
+    return { kind: 'question', text: `${who} asked: “${q.length > 90 ? '…' + q.slice(-88) : q}”` };
   }
-  if ((row.queueDepth || 0) > 0) return `${row.queueDepth} queued prompt${row.queueDepth > 1 ? 's' : ''} pending`;
-  return '';
+  if ((row.queueDepth || 0) > 0) {
+    return { kind: 'queue', text: `${row.queueDepth} queued prompt${row.queueDepth > 1 ? 's' : ''} pending` };
+  }
+  return null;
 }
 
 /** Compute the display status for one board row. */
 export function inferStatus(row, live, now = Date.now()) {
-  const isLive = row.source !== 'desktop-cowork' && (
-    live.has(row.sessionId) ||
-    (row.source === 'codex' && now - (row.lastActivityMs || 0) < RECENT_GROWTH_MS)
-  );
+  // What counts as evidence of "running" is a property of the client (see clients.mjs), not a
+  // guess made here — ACTIVE is detected, never declared.
+  const liveness = clientOf(row).liveness;
+  const isLive = liveness === 'pid' ? live.has(row.sessionId)
+    : liveness === 'growth' ? now - (row.lastActivityMs || 0) < RECENT_GROWTH_MS
+    : false;
   if (isLive) return { status: 'active', reason: '', locked: false };
 
   const locked = row.statusSource === 'user' && !!row.userStatus;
@@ -66,8 +79,8 @@ export function inferStatus(row, live, now = Date.now()) {
   // is abandonment, not waiting
   const age = now - (row.lastActivityMs || 0);
   const wait = waitingReason(row);
-  const waitFresh = wait && (wait.startsWith('Claude asked') ? age < 7 * D : age < INPROGRESS_MS);
-  if (waitFresh) return { status: 'waiting', reason: row.reason || wait, locked: false };
+  const waitFresh = wait && (wait.kind === 'question' ? age < 7 * D : age < INPROGRESS_MS);
+  if (waitFresh) return { status: 'waiting', reason: row.reason || wait.text, locked: false };
   if (row.scheduled) return { status: 'recurring', reason: row.reason || '', locked: false };
   if (now - (row.lastActivityMs || 0) < INPROGRESS_MS) return { status: 'inprogress', reason: row.reason || '', locked: false };
   return { status: 'idle', reason: '', locked: false }; // off-board; lives in Sessions
@@ -90,7 +103,7 @@ export function buildBoard(store, { project } = {}) {
       sessionId: row.sessionId,
       taskId: row.taskId || row.sessionId,
       title: row.taskTitle || row.title || row.sessionId.slice(0, 8),
-      project: row.project, cwd: row.cwd, source: row.source,
+      project: row.project, cwd: row.cwd, source: row.source, clientId: resolveClientId(row),
       gitBranch: row.gitBranch, model: row.model,
       lastActivityMs: row.lastActivityMs, msgCount: row.msgCount, subagentCount: row.subagentCount,
       status, reason, locked, category: row.category || '',

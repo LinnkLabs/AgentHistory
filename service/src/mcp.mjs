@@ -31,7 +31,7 @@ function tools(store) {
     },
     {
       name: 'search_history',
-      description: "Full-text search (BM25) across ALL of the user's past Claude sessions — every project, months of history, including sessions whose local files were cleaned up. Use to find prior work, decisions, fixes, or discussions ('did we already solve X?'). Scope with project or sessionId; target narrows to input (user prompts) | output (Claude text) | commands (tool calls) | toolout (tool results).",
+      description: "Full-text search (BM25) across ALL of the user's past agent sessions — Claude Code AND Codex, every project, months of history, including sessions whose local files were cleaned up. Use to find prior work, decisions, fixes, or discussions ('did we already solve X?'). Scope with project or sessionId; target narrows to input (user prompts) | output (agent text) | commands (tool calls) | toolout (tool results).",
       inputSchema: {
         type: 'object',
         properties: {
@@ -168,7 +168,7 @@ export function runMcp(store) {
         protocolVersion: (params && params.protocolVersion) || PROTOCOL_DEFAULT,
         capabilities: { tools: {} },
         serverInfo: SERVER_INFO,
-        instructions: 'Agent History: read-only memory over ALL of this user\'s past Claude sessions. get_context_book tells you how they work; search_history/read_session recover any past context; get_recent_activity shows what they were just doing.',
+        instructions: 'Agent History: read-only memory over ALL of this user\'s past agent sessions (Claude Code and Codex). get_context_book tells you how they work; search_history/read_session recover any past context; get_recent_activity shows what they were just doing.',
       });
     }
     if (method === 'notifications/initialized' || (method || '').startsWith('notifications/')) return; // no response to notifications

@@ -149,7 +149,7 @@ export function buildExtractionPrompt(session, messages, signals, knownFacts = [
     budget -= line.length;
     lines.push(line);
   }
-  return `You are a careful analyst building an evidence-linked model of a software developer from one of their AI-agent session transcripts. Extract durable facts about the USER (never about Claude, never about transient task state).
+  return `You are a careful analyst building an evidence-linked model of a software developer from one of their AI-agent session transcripts. Extract durable facts about the USER (never about the assistant, never about transient task state).
 
 Session: "${session.title}" · project: ${session.project} · date: ${(session.lastTs || '').slice(0, 10)}
 

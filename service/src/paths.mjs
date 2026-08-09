@@ -10,9 +10,21 @@ export function claudeProjectsDir() {
   return process.env.CLAUDE_TRANSCRIPT_PATH || path.join(HOME, '.claude', 'projects');
 }
 
-/** True when pointing at a custom transcript tree (demo/tests) — machine-wide sources (Cowork/Codex) stay out. */
+/** Codex's own home, honouring the CODEX_HOME convention its CLI uses. */
+export function codexHomeDir() {
+  return process.env.CODEX_HOME || path.join(HOME, '.codex');
+}
+
+/**
+ * True when pointing at a custom transcript tree (demo/tests) — machine-wide sources stay out so a
+ * demo index can never pick up real sessions. Codex is exempt when CODEX_HOME is ALSO redirected,
+ * which is what lets the demo corpus contain a Codex session without touching ~/.codex.
+ */
 export function isCustomTree() {
   return !!process.env.CLAUDE_TRANSCRIPT_PATH;
+}
+export function isCustomCodexTree() {
+  return !!process.env.CODEX_HOME;
 }
 
 /** Live process registry: ~/.claude/sessions/<pid>.json (Phase 2 live-state; enumerated read-only here). */

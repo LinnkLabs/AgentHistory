@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.7
+
+- **Codex sessions are no longer labelled "Claude".** Every speaker name, filter tab, badge, and
+  button now comes from the session's own client, and the primary action runs that client's real
+  resume command — Codex sessions previously offered `claude --resume`, which could never work.
+- Sessions are identified down to the surface that wrote them: `codex · desktop`, `codex · vs code`,
+  `claude · vs code`, `claude · sdk` (headless runs are now distinguishable from interactive ones).
+- Codex sessions use Codex's own thread names instead of adopting an injected
+  `# Context from my IDE setup:` block as their title.
+- `CODEX_HOME` is honoured, matching the Codex CLI's own convention.
+
 ## 0.1.6
 
 - Publisher is now `LinnkLabs` (matches the GitHub org). The extension ID changed, so uninstall any

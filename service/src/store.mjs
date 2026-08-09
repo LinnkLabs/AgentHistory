@@ -91,7 +91,10 @@ CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
 END;
 `;
 
-export const SCHEMA_VERSION = 4;
+// Bump whenever a reader's OUTPUT changes for files it already indexed — readers treat a row with
+// an older parserSchemaVer as a cache miss, so users get the fix on the next run instead of having
+// to know about `index --force`. (v5: Codex entrypoint now carries the real originator + thread names.)
+export const SCHEMA_VERSION = 5;
 
 export function openStore() {
   const db = new Database(dbPath());
@@ -166,13 +169,13 @@ class Store {
   }
 
   getIndexedInfo(sessionId) {
-    const row = this.db.prepare('SELECT lastActivityMs, fileSize FROM sessions WHERE sessionId = ?').get(sessionId);
+    const row = this.db.prepare('SELECT lastActivityMs, fileSize, parserSchemaVer FROM sessions WHERE sessionId = ?').get(sessionId);
     return row || null;
   }
 
   /** Fuller state for incremental tailing (M5). */
   getIndexedFull(sessionId) {
-    return this.db.prepare('SELECT fileSize, lastActivityMs, msgCount FROM sessions WHERE sessionId = ?').get(sessionId) || null;
+    return this.db.prepare('SELECT fileSize, lastActivityMs, msgCount, parserSchemaVer FROM sessions WHERE sessionId = ?').get(sessionId) || null;
   }
 
   /** Append messages to an existing session without deleting prior ones (M5 tail). */
@@ -226,7 +229,7 @@ class Store {
   /** Sessions joined with task_meta — raw rows; status inference happens in taskboard.mjs. */
   boardRows() {
     return this.db.prepare(`
-      SELECT s.sessionId, s.source, s.cwd, s.project, s.gitBranch, s.title, s.model,
+      SELECT s.sessionId, s.source, s.entrypoint, s.cwd, s.project, s.gitBranch, s.title, s.model,
              s.lastActivityMs, s.msgCount, s.subagentCount,
              s.endRole, s.endKind, s.endHint, s.queueDepth, s.scheduled, s.prUrl,
              t.taskId, t.taskTitle, t.status AS userStatus, t.statusSource, t.reason, t.category
@@ -315,7 +318,7 @@ class Store {
     if (kind) { where.push('m.kind = @kind'); args.kind = kind; }
     const sql = `
       SELECT m.sessionId, m.msgIndex, m.role, m.kind, m.ts,
-             s.project, s.cwd, s.title,
+             s.project, s.cwd, s.title, s.source, s.entrypoint,
              snippet(messages_fts, 0, '', '', '…', 14) AS snippet,
              bm25(messages_fts) AS rank
       FROM messages_fts

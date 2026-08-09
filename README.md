@@ -48,7 +48,11 @@ files. Agent History reads what the agents already wrote to disk and turns it in
 |---|---|---|
 | Claude Code (CLI + VS Code/Cursor extension) | `~/.claude/projects/**/*.jsonl` | read-only |
 | Claude desktop app (Cowork / local agents) | `~/Library/Application Support/Claude/…` | read-only |
-| Codex (CLI / ChatGPT desktop) | `~/.codex/sessions/**` | read-only |
+| Codex (CLI / ChatGPT desktop / VS Code) | `~/.codex/sessions/**` (or `$CODEX_HOME`) | read-only |
+
+Each session is labelled with the client that actually wrote it — `codex · desktop`,
+`claude · vs code`, `claude · sdk` — and reopens with **that** tool's own resume command. Anything
+Agent History can't identify degrades to its family, never to the wrong vendor.
 
 Your index also **outlives Claude Code's 30-day transcript cleanup** — anything indexed once stays
 searchable forever.
@@ -135,7 +139,8 @@ Want to try it without your own sessions, or take screenshots safely?
 
 ```bash
 node service/scripts/make-demo.mjs /tmp/ah-demo
-CLAUDE_TRANSCRIPT_PATH=/tmp/ah-demo/projects AGENT_MANAGER_HOME=/tmp/ah-demo/store npx agent-history-cli
+CLAUDE_TRANSCRIPT_PATH=/tmp/ah-demo/projects CODEX_HOME=/tmp/ah-demo/codex \
+  AGENT_MANAGER_HOME=/tmp/ah-demo/store npx agent-history-cli
 ```
 
 ## License

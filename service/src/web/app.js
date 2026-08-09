@@ -7,11 +7,39 @@ const TARGETS = {
   all: {}, input: { role: 'user' }, output: { role: 'assistant', kind: 'text' },
   commands: { kind: 'tool_use' }, toolout: { kind: 'tool_result' },
 };
-const TARGET_LABEL = { all: 'all', input: 'your input', output: 'Claude output', commands: 'commands', toolout: 'tool output' };
-const WHO = { user: 'You', assistant: 'Claude', tool: 'Tool', system: 'System' };
-const whoLabel = (role) => WHO[role] || 'Claude';
+const TARGET_LABEL = { all: 'all', input: 'your input', output: 'agent output', commands: 'commands', toolout: 'tool output' };
+const WHO = { user: 'You', tool: 'Tool', system: 'System' };
+
+// ---- client identity ----------------------------------------------------------------------
+// The server resolves every row's clientId (see service/src/clients.mjs) and ships the descriptor
+// table at /api/clients. Nothing here re-derives it: one authority, so a new agent never has to be
+// taught to ~10 separate render sites, and an unrecognised one can't silently read as "Claude".
+const FALLBACK_CLIENT = { family: 'unknown', product: 'Agent', surface: '', assistant: 'Agent', glyph: '◆', badge: '', handoff: 'none' };
+function clientOf(row) { return (row && state.clients[row.clientId]) || FALLBACK_CLIENT; }
+/** Speaker name for a message row, in the voice of the session that produced it. */
+function whoLabel(role, row) { return role === 'assistant' ? clientOf(row).assistant : (WHO[role] || 'Agent'); }
+function clientBadge(row) {
+  const c = clientOf(row);
+  const name = c.family === 'unknown' ? 'agent' : c.family;
+  return { text: c.surface ? `${name} · ${c.surface.toLowerCase()}` : name, cls: c.badge };
+}
+function openLabel(row) { const c = clientOf(row); return `${c.glyph} Open in ${c.product}`; }
+/** Codex ids are stored prefixed (`codex-<uuid>`); its CLI wants the bare UUID. */
+function nativeSessionId(row) {
+  const id = String((row && row.sessionId) || '');
+  return clientOf(row).family === 'codex' ? id.replace(/^codex-/, '') : id;
+}
+/** The shell line that reopens this session in ITS OWN tool. '' when nothing can resume it. */
+function resumeCommand(row) {
+  const c = clientOf(row);
+  if (c.handoff === 'none') return '';
+  const cd = `cd ${JSON.stringify((row && row.cwd) || '.')}`;
+  return c.family === 'codex' ? `${cd} && codex resume ${nativeSessionId(row)}`
+    : `${cd} && claude --resume ${row.sessionId}`;
+}
 
 const state = {
+  clients: {},                    // clientId -> descriptor, from /api/clients at boot
   projects: [], sessions: [], project: null, sessionId: null, target: 'all',
   mode: 'browse',                 // 'browse' | 'search'
   query: '', scope: 'global', scopeId: null,   // scope: global | project | session
@@ -145,7 +173,11 @@ function fillEmptyFlow(stats) {
 }
 
 async function loadOverview() {
-  const [stats, data] = await Promise.all([getJSON('/api/stats'), getJSON('/api/sessions')]);
+  // The client table is static for the life of the service — fetched once here, never refetched.
+  const [stats, data, clients] = await Promise.all([
+    getJSON('/api/stats'), getJSON('/api/sessions'), getJSON('/api/clients').catch(() => ({ clients: {} })),
+  ]);
+  state.clients = clients.clients || {};
   state.projects = data.projects; state.sessions = data.sessions;
   $('#stats').textContent = `${stats.sessions} sessions · ${stats.projects} projects · ${stats.messages.toLocaleString()} messages`;
   fillEmptyFlow(stats);
@@ -216,9 +248,8 @@ function sessionCard(s) {
   meta.appendChild(el('span', null, '· ' + rel(s.lastActivityMs)));
   meta.appendChild(el('span', null, '· ' + s.msgCount + ' msg'));
   if (s.gitBranch) meta.appendChild(el('span', null, '· ⎇ ' + s.gitBranch));
-  const srcLabel = s.source === 'desktop-cowork' ? 'cowork' : (s.source || 'cli');
-  const srcClass = s.source === 'desktop-cowork' ? ' cowork' : (s.source === 'ide' ? ' ide' : (s.source === 'codex' ? ' codex' : ''));
-  meta.appendChild(el('span', 'badge' + srcClass, srcLabel));
+  const b = clientBadge(s);
+  meta.appendChild(el('span', 'badge' + (b.cls ? ' ' + b.cls : ''), b.text));
   if (s.subagentCount) meta.appendChild(el('span', 'badge', s.subagentCount + ' sub'));
   c.appendChild(meta);
   c.onclick = () => openSession(s.sessionId);
@@ -333,7 +364,8 @@ function renderResults() {
       for (const h of state.hits) {
         const r = el('div', 'gitem msg-item');
         r.dataset.sid = h.sessionId; r.dataset.mi = h.msgIndex;
-        const kindLabel = h.kind === 'text' ? whoLabel(h.role).toLowerCase() : h.kind.replace('_', ' ');
+        // hits carry their own clientId, so a mixed result list names each agent correctly
+        const kindLabel = h.kind === 'text' ? whoLabel(h.role, h).toLowerCase() : h.kind.replace('_', ' ');
         r.innerHTML =
           `<div class="gi-crumb"><span class="rolepill rp-${h.kind}">${kindLabel}</span>` +
           `<span class="proj">${esc(h.project)}</span><span class="sep">›</span>` +
@@ -363,27 +395,37 @@ function addGroup(box, key, label, count, note, buildItems) {
 // ================= TRANSCRIPT (locate + navigate) =================
 // Message-type visibility (multi-select checkboxes in the transcript header).
 // This is the single filter for the transcript; the global chips sync it when clicked.
+// `assistant` used to be keyed 'claude'; its label now comes from the open session's client.
 const MSG_TYPES = [
   { key: 'user', label: 'You', short: 'You' },
-  { key: 'claude', label: 'Claude', short: 'Claude' },
+  { key: 'assistant', label: 'Assistant', short: 'Assistant' },
   { key: 'thinking', label: 'Thinking', short: 'Think' },
   { key: 'tool_use', label: 'Commands', short: 'Cmds' },
   { key: 'tool_result', label: 'Tool output', short: 'Output' },
   { key: 'system', label: 'System', short: 'System' },
 ];
 const ALL_TYPE_KEYS = MSG_TYPES.map((t) => t.key);
+/** Type-tab labels, with the assistant named after the session that produced it. */
+function typeLabels(session) {
+  const who = clientOf(session).assistant;
+  return MSG_TYPES.map((t) => (t.key === 'assistant' ? { ...t, label: who, short: who } : t));
+}
 function typeKey(m) {
   if (m.kind === 'thinking') return 'thinking';
   if (m.kind === 'tool_use') return 'tool_use';
   if (m.kind === 'tool_result') return 'tool_result';
   if (m.role === 'user') return 'user';
   if (m.role === 'system') return 'system';
-  return 'claude';
+  return 'assistant';
 }
 function loadMsgTypes() {
   try {
     const saved = JSON.parse(localStorage.getItem('am-msgtypes') || 'null');
-    if (Array.isArray(saved) && saved.length) return new Set(saved.filter((k) => ALL_TYPE_KEYS.includes(k)));
+    // Migrate the pre-rename key, or an existing filter of only-assistant silently resets to all.
+    if (Array.isArray(saved) && saved.length) {
+      const keys = saved.map((k) => (k === 'claude' ? 'assistant' : k)).filter((k) => ALL_TYPE_KEYS.includes(k));
+      if (keys.length) return new Set(keys);
+    }
   } catch { /* */ }
   return new Set(ALL_TYPE_KEYS);
 }
@@ -393,7 +435,7 @@ function saveMsgTypes() { localStorage.setItem('am-msgtypes', JSON.stringify([..
 function syncTargetToTypes() {
   const t = state.msgTypes;
   const only = (k) => t.size === 1 && t.has(k);
-  state.target = only('user') ? 'input' : only('claude') ? 'output'
+  state.target = only('user') ? 'input' : only('assistant') ? 'output'
     : only('tool_use') ? 'commands' : only('tool_result') ? 'toolout' : 'all';
 }
 
@@ -443,11 +485,16 @@ function renderTranscript(s, messages, targetMi) {
 
   // ---- ACT zone: exactly one primary; secondary quiet; tertiary in ⋯ (design 2a) ----
   const actions = el('div', 'dactions');
-  const resume = `cd ${JSON.stringify(s.cwd || '.')} && claude --resume ${s.sessionId}`;
-  const openBtn = mkBtn('✱ Open in Claude Code', () => openInClaudeCode(s));
+  const client = clientOf(s);
+  const resume = resumeCommand(s);
+  const openBtn = mkBtn(openLabel(s), () => openInAgent(s));
   openBtn.classList.add('primary');
+  if (client.handoff === 'none') {   // Cowork runs in a sandbox — no CLI can resume it; don't pretend
+    openBtn.disabled = true;
+    openBtn.title = `${client.product} (${client.surface}) sessions can only be reopened in the app itself`;
+  }
   actions.appendChild(openBtn);
-  actions.appendChild(mkBtn('⧉ Copy resume', () => copyWithToast(resume, 'Resume command copied')));
+  if (resume) actions.appendChild(mkBtn('⧉ Copy resume', () => copyWithToast(resume, 'Resume command copied')));
   const moreBtn = mkBtn('⋯', (e) => sessionMenu(e, s, resume));
   moreBtn.classList.add('ghost'); moreBtn.title = 'More actions';
   actions.appendChild(moreBtn);
@@ -457,7 +504,7 @@ function renderTranscript(s, messages, targetMi) {
   // ---- VIEW strip: docked to the transcript, sticky while scrolling (design 2b) ----
   const counts = {};
   for (const m of messages) counts[typeKey(m)] = (counts[typeKey(m)] || 0) + 1;
-  const present = MSG_TYPES.filter((t) => counts[t.key]);
+  const present = typeLabels(s).filter((t) => counts[t.key]);
   const allOn = state.msgTypes.size >= present.length;
   const strip = el('div', 'viewstrip');
   strip.appendChild(el('span', 'vs-label', 'View'));
@@ -465,7 +512,7 @@ function renderTranscript(s, messages, targetMi) {
   const allBtn = el('button', 'seg-item' + (allOn ? ' on' : ''), 'All');
   allBtn.onclick = () => { state.msgTypes = new Set(ALL_TYPE_KEYS); saveMsgTypes(); syncTargetToTypes(); rerenderTranscript({ preserveScroll: true }); if (state.query) doSearch(); };
   seg.appendChild(allBtn);
-  const PRIMARY = ['user', 'claude', 'tool_use'];   // the rest fold into the strip's own ⋯
+  const PRIMARY = ['user', 'assistant', 'tool_use'];   // the rest fold into the strip's own ⋯
   for (const t of present.filter((t) => PRIMARY.includes(t.key))) {
     const on = !allOn && state.msgTypes.has(t.key);
     const b = el('button', 'seg-item' + (on ? ' on' : ''));
@@ -499,7 +546,7 @@ function renderTranscript(s, messages, targetMi) {
   const msgs = el('div', 'msgs');
   const matchSet = new Set(state.openMatches);
   const shown = messages.filter((m) => state.msgTypes.has(typeKey(m)));
-  shown.forEach((m) => msgs.appendChild(messageRow(m, state.query, matchSet.has(m.msgIndex), m.msgIndex === targetMi)));
+  shown.forEach((m) => msgs.appendChild(messageRow(m, state.query, matchSet.has(m.msgIndex), m.msgIndex === targetMi, s)));
   if (!shown.length) msgs.appendChild(el('div', 'empty small', 'All message types are hidden — re-enable one above.'));
   detail.appendChild(msgs);
   detail.scrollTop = 0;
@@ -511,8 +558,9 @@ function sessionMenu(e, s, resume) {
   popMenu(e, [
     ['⧉ Copy path', () => copyWithToast(s.cwd || '', 'Path copied')],
     ['◱ Reveal folder', () => { fetch('/api/reveal', { method: 'POST', body: JSON.stringify({ path: s.cwd }) }); }],
-    ['⧉ Copy resume command', () => copyWithToast(resume, 'Resume command copied')],
-    ['⧉ Copy session id', () => copyWithToast(s.sessionId, 'Session id copied')],
+    ...(resume ? [['⧉ Copy resume command', () => copyWithToast(resume, 'Resume command copied')]] : []),
+    // Codex ids are stored prefixed; copy the id its own CLI actually accepts.
+    ['⧉ Copy session id', () => copyWithToast(nativeSessionId(s), 'Session id copied')],
   ]);
 }
 /** Overflow for the less-used message types inside the view strip. */
@@ -560,11 +608,12 @@ function rerenderTranscript(opts = {}) { // re-apply filters to the already-open
 }
 
 /**
- * "Open in Claude Code" handoff. Deep links can open the session but NOT scroll to a block
- * (no message-anchor param exists), so we copy the current matched block's text first — the user can
- * paste it into the conversation search / use it as context on the other side.
+ * Hand a session back to the agent that wrote it. The server picks the ladder from the session's
+ * client (IDE deep link / its own CLI resume / nothing). Deep links can open the session but NOT
+ * scroll to a block (no message-anchor param exists), so we copy the current matched block's text
+ * first — the user can paste it into the conversation on the other side.
  */
-async function openInClaudeCode(s) {
+async function openInAgent(s) {
   let copied = false;
   const mi = state.openMatches.length ? state.openMatches[state.matchPos] : null;
   if (mi != null) {
@@ -575,11 +624,14 @@ async function openInClaudeCode(s) {
   }
   let r;
   try {
+    // route name kept for the extension's sake; it dispatches on the session's client
     r = await (await fetch('/api/open-in-claude', { method: 'POST', body: JSON.stringify({ sessionId: s.sessionId }) })).json();
   } catch { r = { method: 'none', reason: 'service unreachable' }; }
   const blockNote = copied ? ' · block copied' : '';
+  // Name the command we actually ran, rather than assuming `claude --resume`.
+  const cmd = (r.resumeCmd || '').includes('codex resume') ? 'codex resume' : 'claude --resume';
   if (r.method === 'ide') toast(`Opening in ${r.ide}…${blockNote}`);
-  else if (r.method === 'terminal') toast(`Opened Terminal with claude --resume${blockNote}`);
+  else if (r.method === 'terminal') toast(`Opened Terminal with ${cmd}${blockNote}`);
   else if (r.method === 'copy') {
     await copyText(r.resumeCmd || '');
     toast(`Resume command copied${r.reason ? ` (${r.reason})` : ''}`);
@@ -601,11 +653,11 @@ function scrollToMatch(mi) {
   node.classList.remove('flash'); void node.offsetWidth; node.classList.add('flash'); // restart flash
 }
 function mkBtn(label, fn) { const b = el('button', 'btn', label); b.onclick = fn; return b; }
-function messageRow(m, q, isMatch, isTarget) {
+function messageRow(m, q, isMatch, isTarget, session) {
   const row = el('div', 'msg k-' + m.kind + (isMatch ? ' match' : '') + (isTarget ? ' target' : ''));
   row.dataset.mi = m.msgIndex;
   const h = el('div', 'mhead');
-  h.appendChild(el('span', 'who ' + m.role, whoLabel(m.role)));
+  h.appendChild(el('span', 'who ' + m.role, whoLabel(m.role, session)));
   if (m.kind !== 'text') h.appendChild(el('span', 'mkind', m.kind.replace('_', ' ')));
   if (m.model) { const mm = el('span', 'mmodel', shortModel(m.model)); mm.title = m.model; h.appendChild(mm); }
   h.appendChild(el('span', 'mspacer'));
@@ -850,7 +902,7 @@ document.addEventListener('click', (e) => {
 
 // ================= NOW BOARD (task view) =================
 const BOARD_COLS = [
-  { key: 'active', label: 'Active', cls: 'c-active', hint: 'Detected from live Claude processes — drag is disabled here.' },
+  { key: 'active', label: 'Active', cls: 'c-active', hint: 'Detected from running agents — Claude via its process registry, Codex via live transcript growth. Drag is disabled here.' },
   { key: 'waiting', label: 'Waiting on you', cls: 'c-waiting', hint: 'Nothing needs you. Nice.' },
   { key: 'inprogress', label: 'In progress', cls: 'c-inprog', hint: 'No recent work in flight.' },
   { key: 'recurring', label: 'Recurring', cls: 'c-recur', hint: 'No scheduled/loop sessions.' },
@@ -1035,8 +1087,8 @@ function boardCard(c) {
 
   const meta = el('div', 'bcard-proj');
   meta.appendChild(el('span', null, c.project || '(unknown)'));
-  const srcLabel = c.source === 'desktop-cowork' ? 'cowork' : (c.source === 'ide' ? 'claude' : c.source || 'claude');
-  meta.appendChild(el('span', 'agent a-' + (c.source === 'desktop-cowork' ? 'cowork' : c.source === 'codex' ? 'codex' : 'claude'), srcLabel));
+  const cb = clientBadge(c);   // `badge` is the registry's shared accent key for both pill styles
+  meta.appendChild(el('span', 'agent' + (cb.cls ? ' a-' + cb.cls : ''), cb.text));
   if (c.sessions) meta.appendChild(el('span', 'block', `⧉ ${c.sessions.length} sessions`));
   if (c.category) meta.appendChild(el('span', 'block', c.category));
   card.appendChild(meta);
@@ -1065,7 +1117,10 @@ function boardCard(c) {
   }
 
   const acts = el('div', 'bcard-acts');
-  const open = el('button', 'btn primary', '✱ Open'); open.onclick = () => openInClaudeCode({ sessionId: c.sessionId, cwd: c.cwd });
+  const open = el('button', 'btn primary', `${clientOf(c).glyph} Open`);
+  open.title = openLabel(c);
+  open.disabled = clientOf(c).handoff === 'none';
+  open.onclick = () => openInAgent({ sessionId: c.sessionId, cwd: c.cwd, clientId: c.clientId });
   const tr = el('button', 'btn', '☰ Transcript'); tr.onclick = () => { switchView('sessions'); openSession(c.sessionId); };
   const more = el('button', 'btn', '⋯'); more.onclick = (e) => cardMenu(e, c);
   acts.appendChild(open); acts.appendChild(tr); acts.appendChild(more);

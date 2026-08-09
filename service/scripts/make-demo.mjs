@@ -41,6 +41,49 @@ function session(projectPath, title, turns, { minAgo = 30, model = 'claude-opus-
 
 const P = { orbit: '/Users/demo/code/orbit-app', docs: '/Users/demo/code/docs-site', data: '/Users/demo/code/data-pipeline', mobile: '/Users/demo/code/mobile-app', infra: '/Users/demo/code/infra' };
 
+// --- Codex rollouts ---------------------------------------------------------------------------
+// The corpus has to contain a non-Claude client, or nothing exercises (or screenshots) the fact
+// that Agent History spans both. Written into <out>/codex, which the reader picks up via CODEX_HOME.
+const codexHome = path.join(out, 'codex');
+fs.rmSync(codexHome, { recursive: true, force: true });
+const threadIndex = [];
+function codexSession(projectPath, threadName, turns, { minAgo = 30, model = 'gpt-5.6-sol', originator = 'Codex Desktop', branch = 'main' } = {}) {
+  const d = new Date(now - minAgo * 60000);
+  const dir = path.join(codexHome, 'sessions', String(d.getUTCFullYear()),
+    String(d.getUTCMonth() + 1).padStart(2, '0'), String(d.getUTCDate()).padStart(2, '0'));
+  fs.mkdirSync(dir, { recursive: true });
+  const id = `0199${String(++uuidN).padStart(4, '0')}-0000-7000-8000-${String(uuidN).padStart(12, '0')}`;
+  let t = minAgo + turns.length * 2;
+  const lines = [
+    { timestamp: iso(t), type: 'session_meta', payload: { id, cwd: projectPath, originator, cli_version: '0.146.0-alpha.3.1', git: { branch } } },
+    { timestamp: iso(t), type: 'turn_context', payload: { model, cwd: projectPath, effort: 'medium' } },
+  ];
+  for (const [role, text] of turns) {
+    t -= 2;
+    const ts = iso(t);
+    if (role === 'user') lines.push({ timestamp: ts, type: 'response_item', payload: { type: 'message', role: 'user', content: [{ type: 'input_text', text }] } });
+    else if (role === 'assistant') lines.push({ timestamp: ts, type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] } });
+    else if (role === 'tool') lines.push({ timestamp: ts, type: 'response_item', payload: { type: 'function_call', name: text[0], arguments: JSON.stringify(text[1]) } });
+  }
+  const file = path.join(dir, `rollout-${d.toISOString().replace(/[:.]/g, '-')}-${id}.jsonl`);
+  fs.writeFileSync(file, lines.map((l) => JSON.stringify(l)).join('\n') + '\n');
+  const when = new Date(now - minAgo * 60000);
+  fs.utimesSync(file, when, when);
+  threadIndex.push({ id, thread_name: threadName, updated_at: when.toISOString() });
+}
+
+codexSession(P.data, 'Port the ETL job to DuckDB', [
+  ['user', '# Context from my IDE setup:\nPort the nightly ETL from pandas to DuckDB and compare runtimes.'],
+  ['assistant', 'Rewrote the aggregation as a single DuckDB query. Runtime drops from 41s to 6s on the same input; row counts match exactly.'],
+  ['tool', ['shell', { command: 'python etl/bench.py --compare' }]],
+  ['assistant', 'Benchmarks committed. Want me to delete the pandas path, or keep it behind a flag for one release?'],
+], { minAgo: 35 });
+
+codexSession(P.orbit, 'Audit bundle size regressions', [
+  ['user', 'The main bundle grew 300KB last sprint. Find what did it.'],
+  ['assistant', 'Two icon packs are being imported wholesale instead of per-icon. Switching to named imports takes 280KB off the main chunk.'],
+], { minAgo: 60 * 26, model: 'gpt-5.5', originator: 'codex_vscode', branch: 'perf/bundle' });
+
 // --- WAITING (agent ended on a question) ---
 session(P.orbit, 'Add OAuth login flow', [
   ['user', 'Add Google OAuth to the login page; keep the email/password flow as a fallback.'],
@@ -121,4 +164,10 @@ session(P.orbit, 'Upgrade to the new router', [
   ['assistant', 'Upgraded; migrated the 3 breaking APIs and updated the tests. All green, PR opened.'],
 ], { minAgo: 60 * 60 * 8, branch: 'router-v7' });
 
-console.log('demo corpus written to', projectsDir, '(15 sessions across 5 projects)');
+// Codex names its own threads here; the reader prefers these over derived titles.
+fs.writeFileSync(path.join(codexHome, 'session_index.jsonl'), threadIndex.map((r) => JSON.stringify(r)).join('\n') + '\n');
+
+console.log('demo corpus written to', projectsDir, `(${uuidN >= 0 ? 15 : 0} Claude sessions across 5 projects)`);
+console.log('codex corpus written to', codexHome, '(2 Codex sessions)');
+console.log('\nrun it with:\n  CLAUDE_TRANSCRIPT_PATH=%s CODEX_HOME=%s AGENT_MANAGER_HOME=%s \\\n    node bin/agent-manager.mjs',
+  projectsDir, codexHome, path.join(out, 'store'));

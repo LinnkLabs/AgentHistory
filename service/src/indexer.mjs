@@ -48,7 +48,8 @@ export function indexOne(store, item, { force = false } = {}) {
   let st;
   try { st = fs.statSync(item.filePath); } catch { return 'skipped'; }
   const prior = store.getIndexedInfo(item.sessionId);
-  if (!force && prior && prior.fileSize === st.size && prior.lastActivityMs === Math.floor(st.mtimeMs)) {
+  if (!force && prior && prior.fileSize === st.size && prior.lastActivityMs === Math.floor(st.mtimeMs)
+      && (prior.parserSchemaVer || 0) >= SCHEMA_VERSION) {
     return 'skipped';
   }
 
@@ -108,6 +109,9 @@ export function tailIndexOne(store, item) {
   const size = st.size, mtimeMs = Math.floor(st.mtimeMs);
   const prior = store.getIndexedFull(item.sessionId);
   if (!prior) return indexOne(store, item, { force: true });
+  // A row parsed by an older reader must be rebuilt whole — tailing it would append new-format
+  // messages onto stale ones and leave the session's own metadata at the old parser's values.
+  if ((prior.parserSchemaVer || 0) < SCHEMA_VERSION) return indexOne(store, item, { force: true });
   if (size === prior.fileSize && mtimeMs === prior.lastActivityMs) return 'skipped';
   if (size < prior.fileSize) return indexOne(store, item, { force: true }); // shrank / rewritten → resync
 

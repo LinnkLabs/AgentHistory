@@ -53,7 +53,7 @@ function rel(ms) {
 
 async function main() {
   // lazy: nothing native loads until after the version guard above has passed
-  const [{ openStore }, { indexAll }, { indexCoworkAll }, { indexCodexAll }, { isCustomTree }] = await Promise.all([
+  const [{ openStore }, { indexAll }, { indexCoworkAll }, { indexCodexAll }, { isCustomTree, isCustomCodexTree }] = await Promise.all([
     import('../src/store.mjs'), import('../src/indexer.mjs'), import('../src/cowork.mjs'),
     import('../src/codex.mjs'), import('../src/paths.mjs'),
   ]);
@@ -92,7 +92,7 @@ Usage:
     process.stdout.write('Refreshing index… ');
     const r = indexAll(store, {});
     const cw = isCustomTree() ? { total: 0 } : indexCoworkAll(store);
-    const cx = isCustomTree() ? { total: 0 } : indexCodexAll(store, {});
+    const cx = (isCustomTree() && !isCustomCodexTree()) ? { total: 0 } : indexCodexAll(store, {});
     const s = store.stats();
     process.stdout.write(`${r.indexed + (cw.indexed || 0) + (cx.indexed || 0)} new/changed · ${s.sessions} sessions · ${s.projects} projects\n`);
     store.close();
@@ -120,7 +120,7 @@ Usage:
     // M4: desktop Cowork (optional, best-effort)
     const cw = isCustomTree() ? { total: 0 } : indexCoworkAll(store);
     if (cw.total) process.stdout.write(`  desktop Cowork: ${cw.indexed} with transcripts, ${cw.metadataOnly} metadata-only (encrypted/migrated)\n`);
-    const cx = isCustomTree() ? { total: 0 } : indexCodexAll(store, { force });
+    const cx = (isCustomTree() && !isCustomCodexTree()) ? { total: 0 } : indexCodexAll(store, { force });
     if (cx.total) process.stdout.write(`  Codex: ${cx.indexed} indexed, ${cx.skipped} unchanged\n`);
     const s = store.stats();
     process.stdout.write(`  ${s.sessions} sessions · ${s.projects} projects · ${s.messages} messages · ${fmtBytes(s.bytes)} of transcripts\n`);

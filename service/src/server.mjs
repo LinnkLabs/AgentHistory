@@ -9,10 +9,11 @@ import { openStore } from './store.mjs';
 import { reconcile } from './indexer.mjs';
 import { indexCoworkAll } from './cowork.mjs';
 import { indexCodexAll } from './codex.mjs';
-import { isCustomTree, claudeProjectsDir } from './paths.mjs';
+import { isCustomTree, isCustomCodexTree, claudeProjectsDir } from './paths.mjs';
 import { retroReport, readBook, buildBook, extractSessions, callsUsedToday, DAILY_CALL_LIMIT } from './persona.mjs';
 import { buildBoard, pidAlive } from './taskboard.mjs';
 import { runClassify, classifyPreview } from './classify.mjs';
+import { CLIENTS, resolveClientId, clientOf, resumeCommand } from './clients.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIR = path.join(__dirname, 'web');
@@ -31,17 +32,24 @@ function sendFile(res, file) {
     res.end(buf);
   });
 }
+/** Stamp a row with its resolved client id. One resolution point for every payload we emit, so the
+ *  browser never has to re-derive (and can't drift into its own guess). */
+const withClient = (row) => (row ? { ...row, clientId: resolveClientId(row) } : row);
+
 function openBrowser(url) {
   const cmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
   try { execFile(cmd, [url], () => {}); } catch { /* ignore */ }
 }
 
-// ---------- Open in Claude Code (deep-link handoff) ----------
-// Research findings (2026-07): the VS Code extension resumes by id via
-// vscode://anthropic.claude-code/open?session=<id> — but ONLY if the session's workspace is the
-// focused window. So we (1) focus the right folder window first (open -a <IDE> <cwd>), then (2) fire
-// the URI. No live IDE window with that folder → open a Terminal running `claude --resume`. Anything
-// else (non-mac, Cowork sandbox sessions, failures) → tell the client to copy the resume command.
+// ---------- Reopen a session in its own tool (deep-link handoff) ----------
+// Which ladder runs is decided by the session's client (see clients.mjs), never assumed:
+//   handoff:'ide'      Claude Code — research (2026-07): the VS Code extension resumes by id via
+//                      vscode://anthropic.claude-code/open?session=<id>, but ONLY if the session's
+//                      workspace is the focused window. So we (1) focus the right folder window
+//                      (open -a <IDE> <cwd>), then (2) fire the URI. No live window → Terminal.
+//   handoff:'terminal' Codex, and headless Claude — no URI handler is registered by either Codex
+//                      surface, so go straight to a Terminal running the client's own resume command.
+//   handoff:'none'     Cowork sandbox sessions — not resumable by any CLI. Say so; don't invent one.
 const IDE_SCHEMES = {
   'Visual Studio Code': { app: 'Visual Studio Code', scheme: 'vscode' },
   'Visual Studio Code - Insiders': { app: 'Visual Studio Code - Insiders', scheme: 'vscode-insiders' },
@@ -66,18 +74,24 @@ function liveIdeWindows() {
   return out;
 }
 
-function openInClaude(store, sessionId, { dryRun = false } = {}) {
+function openSessionInClient(store, sessionId, { dryRun = false } = {}) {
   const s = store.getSessionMeta(sessionId);
   if (!s) return { method: 'none', reason: 'session not found' };
   const cwd = s.cwd || '';
-  const resumeCmd = `cd ${JSON.stringify(cwd || os.homedir())} && claude --resume ${sessionId}`;
+  const client = clientOf(s);
+  const resumeCmd = resumeCommand({ ...s, cwd: cwd || os.homedir() });
 
-  // Cowork sandbox sessions aren't resumable by the CLI/IDE at all — be honest, don't hand out a bogus command.
-  if (s.source === 'desktop-cowork') return { method: 'none', reason: 'desktop Cowork session — view it here or in the Claude app' };
-  if (process.platform !== 'darwin') return { method: 'copy', resumeCmd, reason: 'IDE/terminal handoff is macOS-only for now' };
+  // Not every client can be resumed. Be honest rather than handing out another tool's command.
+  if (client.handoff === 'none') {
+    return { method: 'none', client: client.id, reason: client.id === 'claude-desktop'
+      ? 'desktop Cowork session — view it here or in the Claude app'
+      : `${client.product} (${client.surface}) sessions can't be reopened from outside` };
+  }
+  if (process.platform !== 'darwin') return { method: 'copy', client: client.id, resumeCmd, reason: 'IDE/terminal handoff is macOS-only for now' };
 
-  // 1) workspace-aware IDE deep link: a LIVE window already has this session's folder open
-  const win = cwd && liveIdeWindows().find((w) => w.folders.some((fo) => cwd === fo || cwd.startsWith(fo + '/')));
+  // 1) workspace-aware IDE deep link — Claude Code only; no Codex surface registers a URI handler.
+  const win = client.handoff === 'ide' && cwd
+    && liveIdeWindows().find((w) => w.folders.some((fo) => cwd === fo || cwd.startsWith(fo + '/')));
   if (win) {
     const ide = IDE_SCHEMES[win.ideName] || IDE_SCHEMES['Visual Studio Code'];
     const folder = win.folders.find((fo) => cwd === fo || cwd.startsWith(fo + '/'));
@@ -89,12 +103,12 @@ function openInClaude(store, sessionId, { dryRun = false } = {}) {
           setTimeout(() => { try { execFile('open', [uri], () => {}); } catch { /* */ } }, 600);
         });
       }
-      return { method: 'ide', ide: win.ideName, folder, uri, dryRun };
+      return { method: 'ide', client: client.id, ide: win.ideName, folder, uri, dryRun };
     } catch { /* fall through */ }
   }
 
-  // 2) terminal fallback: open Terminal.app running the resume command in the right cwd
-  if (cwd && fs.existsSync(cwd)) {
+  // 2) terminal fallback: open Terminal.app running the CLIENT'S OWN resume command in the right cwd
+  if (cwd && resumeCmd && fs.existsSync(cwd)) {
     const script = resumeCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     try {
       if (!dryRun) {
@@ -102,11 +116,13 @@ function openInClaude(store, sessionId, { dryRun = false } = {}) {
           ['-e', `tell application "Terminal" to do script "${script}"`, '-e', 'tell application "Terminal" to activate'],
           () => {});
       }
-      return { method: 'terminal', resumeCmd, dryRun };
+      return { method: 'terminal', client: client.id, resumeCmd, dryRun };
     } catch { /* fall through */ }
   }
 
-  return { method: 'copy', resumeCmd, reason: cwd ? 'no live IDE window with this folder' : 'session cwd unknown' };
+  return { method: 'copy', client: client.id, resumeCmd,
+    reason: !cwd ? 'session cwd unknown' : !fs.existsSync(cwd) ? 'session folder no longer exists'
+      : client.handoff === 'ide' ? 'no live IDE window with this folder' : 'could not open Terminal' };
 }
 
 export async function serve({ port = 4600, open = true, watch = true } = {}) {
@@ -143,6 +159,10 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
       // transcriptRoot lets the UI name the exact directory it scanned when nothing was found
       if (p === '/api/stats') return sendJSON(res, 200, { ...store.stats(), transcriptRoot: claudeProjectsDir(), customTree: isCustomTree() });
 
+      // The presentation table for every known client. The web app is a classic script and can't
+      // import clients.mjs, so it fetches this once at boot instead of duplicating the registry.
+      if (p === '/api/clients') return sendJSON(res, 200, { clients: CLIENTS });
+
       if (p === '/api/sessions') {
         // O1: organized overview — projects + sessions, filtered.
         const sessions = store.listSessions({
@@ -152,7 +172,7 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
           to: qp.get('to') ? Number(qp.get('to')) : undefined,
           sort: qp.get('sort') || 'recent',
         });
-        return sendJSON(res, 200, { projects: store.projectSummary(), sessions });
+        return sendJSON(res, 200, { projects: store.projectSummary(), sessions: sessions.map(withClient) });
       }
 
       const mSession = p.match(/^\/api\/session\/([^/]+)$/);
@@ -160,7 +180,7 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
         // O3: full transcript for the locate/jump view.
         const data = store.getSession(decodeURIComponent(mSession[1]));
         if (!data) return sendJSON(res, 404, { error: 'not found' });
-        return sendJSON(res, 200, data);
+        return sendJSON(res, 200, { ...data, session: withClient(data.session) });
       }
 
       if (p === '/api/search') {
@@ -173,7 +193,7 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
           kind: qp.get('kind') || undefined,
           limit: qp.get('limit') ? Number(qp.get('limit')) : 200,
         });
-        return sendJSON(res, 200, { hits });
+        return sendJSON(res, 200, { hits: hits.map(withClient) });
       }
 
       // ---- portrait (visualization layer): one payload with everything the page needs ----
@@ -332,7 +352,7 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
         req.on('end', () => {
           let sessionId = '', dryRun = false;
           try { const b = JSON.parse(body); sessionId = b.sessionId || ''; dryRun = !!b.dryRun; } catch { /* */ }
-          const result = openInClaude(store, sessionId, { dryRun });
+          const result = openSessionInClient(store, sessionId, { dryRun });
           sendJSON(res, 200, result);
         });
         return;
@@ -378,7 +398,7 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
     timer = setInterval(() => {
       try {
         const r = reconcile(store);            // byte-offset tail of grown files + pick up new sessions
-        const cx = isCustomTree() ? { indexed: 0 } : indexCodexAll(store);       // codex: cheap stat-skip pass (also feeds the board's recency-based Active)
+        const cx = (isCustomTree() && !isCustomCodexTree()) ? { indexed: 0 } : indexCodexAll(store);       // codex: cheap stat-skip pass (also feeds the board's recency-based Active)
         if (r.changed || cx.indexed) { version++; lastChangeMs = Date.now(); }
       } catch { /* ignore a bad tick */ }
     }, 5000);
