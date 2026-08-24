@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.8
+
+- **Search is never squeezed again.** In a VS Code sidebar it was sharing a row with the ☰ button
+  and the Sessions/Now switcher, ending up so narrow its own placeholder truncated. Below 900px it
+  now takes a full row of its own, above everything else — 96% of the bar instead of a sliver.
+- **⌘K actually works.** The bar advertised the shortcut but nothing implemented it. ⌘K / Ctrl+K now
+  focuses search from anywhere, with `/` as a fallback (VS Code can swallow ⌘K inside a webview),
+  and Escape clears it.
+
 ## 0.1.7
 
 - **Codex sessions are no longer labelled "Claude".** Every speaker name, filter tab, badge, and

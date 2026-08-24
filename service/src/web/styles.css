@@ -29,8 +29,9 @@ body {
 .topbar { display: flex; align-items: center; gap: 14px; padding: 8px 14px; background: var(--bg2); border-bottom: 1px solid var(--line); flex: 0 0 auto; }
 .brand { font-weight: 700; letter-spacing: .3px; color: var(--fg); white-space: nowrap; }
 /* search is the front door: the only field treatment in the bar (design 2g) */
-.searchwrap { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0;
-              background: var(--bg3); border: 1px solid var(--line); border-radius: 9px; padding: 6px 12px; }
+.searchwrap { display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 220px;
+              background: var(--bg3); border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; }
+.searchwrap:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); }
 .searchwrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-sh); }
 .searchicon { color: var(--faint); font-size: 12px; flex: none; }
 .search { flex: 1 1 auto; min-width: 0; background: none; border: 0; color: var(--fg); font-size: 12.5px; outline: none; padding: 0; }
@@ -223,15 +224,18 @@ body {
   #rz-rail { display: none; }
 }
 
-@media (max-width: 720px) {
-  /* topbar: two rows — search on top, target chips scroll below */
-  .topbar { flex-wrap: wrap; gap: 8px; row-gap: 6px; padding: 8px 10px; }
+/* Search is the front door, so it is the one control that never gets squeezed. Once the bar can't
+   hold it plus its neighbours on one line (a VS Code sidebar is ~400-500px), search claims a full
+   row of its own ABOVE everything else, and the brand — the only purely decorative item — goes. */
+@media (max-width: 900px) {
+  .topbar { flex-wrap: wrap; row-gap: 8px; }
   .brand { display: none; }
+  .searchwrap { order: -1; flex: 1 1 100%; min-width: 0; padding: 8px 12px; }
+}
+
+@media (max-width: 720px) {
+  .topbar { gap: 8px; row-gap: 8px; padding: 8px 10px; }
   .railtoggle { display: inline-flex; align-items: center; justify-content: center; }
-  .searchwrap { max-width: none; min-width: 0; }
-  .targets { flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-  .targets::-webkit-scrollbar { display: none; }
-  .chip { white-space: nowrap; flex: 0 0 auto; }
 
   /* single column: list is the home view; rail becomes a drawer; detail takes over on open */
   .layout { position: relative; }

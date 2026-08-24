@@ -258,6 +258,25 @@ function sessionCard(s) {
 
 // ================= SEARCH =================
 function setScope(level, id = null) { state.scope = level; state.scopeId = id; }
+
+/**
+ * Focus search from anywhere. The bar advertised ⌘K but nothing implemented it, so the shortcut
+ * the UI promises now works — plus "/" as a fallback, because inside a VS Code webview ⌘K is a
+ * chord prefix the editor may swallow before the page ever sees it. The hint reflects the platform.
+ */
+function bindSearchShortcut(q) {
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  const hint = $('#kbdhint');
+  if (hint) hint.textContent = mac ? '⌘K' : 'Ctrl K';
+  const typingElsewhere = (t) => t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  document.addEventListener('keydown', (e) => {
+    const combo = (mac ? e.metaKey : e.ctrlKey) && !e.altKey && e.key.toLowerCase() === 'k';
+    const slash = e.key === '/' && !e.metaKey && !e.ctrlKey && !typingElsewhere(e.target);
+    if (!combo && !slash) return;
+    e.preventDefault();
+    q.focus(); q.select();
+  });
+}
 function bindSearch() {
   const q = $('#q');
   let deb;
@@ -271,7 +290,11 @@ function bindSearch() {
       doSearch();
     }, 220); // live search fixes "nothing happens on typing"
   });
-  q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { clearTimeout(deb); state.query = q.value.trim(); if (state.query) doSearch(); } });
+  q.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { clearTimeout(deb); state.query = q.value.trim(); if (state.query) doSearch(); }
+    if (e.key === 'Escape') { clearTimeout(deb); q.value = ''; exitSearch(); q.blur(); }
+  });
+  bindSearchShortcut(q);
   $('#scope').addEventListener('change', () => {
     const v = $('#scope').value;
     if (v === 'global') setScope('global');
