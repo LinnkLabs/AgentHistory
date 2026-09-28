@@ -192,6 +192,7 @@ export async function serve({ port = 4600, open = true, watch = true } = {}) {
           role: qp.get('role') || undefined,
           kind: qp.get('kind') || undefined,
           limit: qp.get('limit') ? Number(qp.get('limit')) : 200,
+          sort: qp.get('sort') || 'relevance',
         });
         return sendJSON(res, 200, { hits: hits.map(withClient) });
       }

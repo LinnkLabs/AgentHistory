@@ -8,6 +8,15 @@
 - **⌘K actually works.** The bar advertised the shortcut but nothing implemented it. ⌘K / Ctrl+K now
   focuses search from anywhere, with `/` as a fallback (VS Code can swallow ⌘K inside a webview),
   and Escape clears it.
+- **Sort search results** by *Best match*, *Newest*, or *Most mentions*. Sorting happens in the
+  index, before results are cut to a page, so *Newest* really is the newest match — not just the
+  newest of the most relevant 200. The choice is remembered.
+- **Every message hit shows when it was said** ("Today 2:14 PM", "Sep 11, 9:54 PM"; hover for the
+  full timestamp and age), a **relevance meter** relative to the best hit, and **×N** when its
+  session mentions the term repeatedly.
+- **Reopen without scrolling back up.** Once the header's button scrolls out of view in a long
+  transcript, a bar docks to the bottom with the session title, copy-resume, and the reopen action.
+- Common-word searches are about 5× faster: snippets are now built only for results that are shown.
 
 ## 0.1.7
 

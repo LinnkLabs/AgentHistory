@@ -61,6 +61,38 @@ function rel(ms) {
   return new Date(ms).toLocaleDateString();
 }
 function abs(ts) { if (!ts) return ''; const d = new Date(ts); return isNaN(d) ? '' : d.toLocaleString(); }
+/** Actual date + time, phrased so recency reads at a glance: "Today 2:14 PM", "Sep 11, 9:54 PM". */
+function when(ts) {
+  if (!ts) return '';
+  const d = new Date(ts); if (isNaN(d)) return '';
+  const t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const diff = Math.round((today - day) / 86400000);
+  if (diff === 0) return 'Today ' + t;
+  if (diff === 1) return 'Yesterday ' + t;
+  const sameYear = d.getFullYear() === today.getFullYear();
+  return d.toLocaleDateString([], sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' }) + (sameYear ? ', ' + t : '');
+}
+/** Age that stays relative at any distance ("77 days ago", "3 months ago") — rel() switches to a date after a week. */
+function ago(ms) {
+  if (!ms || isNaN(ms)) return '';
+  const d = Math.floor((Date.now() - ms) / 86400000);
+  if (d < 1) return rel(ms);
+  if (d < 45) return d === 1 ? 'yesterday' : `${d} days ago`;
+  if (d < 365) { const m = Math.round(d / 30.4); return `${m} month${m > 1 ? 's' : ''} ago`; }
+  const y = Math.round(d / 365); return `${y} year${y > 1 ? 's' : ''} ago`;
+}
+/**
+ * BM25 as a 1-3 meter. Raw scores are unitless negatives that mean nothing to a person, so each hit is
+ * placed relative to the strongest hit in the SAME result set — "how good is this, compared with the
+ * best match there is" — which stays meaningful even when the list is ordered by date.
+ */
+function relevanceTier(score, best) {
+  if (score == null || !best) return 0;
+  const r = score / best;             // both negative: 1 = as strong as the best match
+  return r >= 0.66 ? 3 : r >= 0.4 ? 2 : 1;
+}
 /** 1217 -> "1.2k" so a 4-digit count can't inflate every filter tab. */
 function compactN(n) {
   n = Number(n) || 0;
@@ -325,7 +357,7 @@ async function doSearch() {
   state.sessMatches = state.sessions.filter((s) => inScope(s) && matchesAll(s.title, toks));
 
   // level 3 (server FTS, target-filtered)
-  const params = new URLSearchParams({ q, scope: state.scope });
+  const params = new URLSearchParams({ q, scope: state.scope, sort: state.sort });
   if (state.scope !== 'global' && state.scopeId) params.set('scopeId', state.scopeId);
   const t = TARGETS[state.target] || {};
   if (t.role) params.set('role', t.role); if (t.kind) params.set('kind', t.kind);
@@ -341,9 +373,15 @@ async function doSearch() {
 }
 
 function renderResults() {
-  $('#listhead').innerHTML =
-    `<span>Results for “${esc(state.query)}”</span>` +
-    `<span>${state.projMatches.length}p · ${state.sessMatches.length}s · ${state.hits.length}m</span>`;
+  const lh = $('#listhead');
+  lh.innerHTML = `<span class="lh-q">Results for “${esc(state.query)}”</span>`;
+  const sortSel = el('select', 'sortsel');
+  sortSel.title = 'Sort results';
+  for (const o of SORTS) { const op = el('option', null, o.label); op.value = o.key; op.title = o.hint; sortSel.appendChild(op); }
+  sortSel.value = state.sort;
+  sortSel.onchange = () => setSort(sortSel.value);
+  lh.appendChild(sortSel);
+  lh.appendChild(el('span', 'lh-n', `${state.projMatches.length}p · ${state.sessMatches.length}s · ${state.hits.length}m`));
   const box = $('#list'); box.innerHTML = ''; box.className = 'list results';
 
   const nothing = !state.projMatches.length && !state.sessMatches.length && !state.hits.length;
@@ -367,6 +405,12 @@ function renderResults() {
   if (state.scope === 'project' && !state.sessMatches.length && !state.hits.length) {
     sessRows = sessionsForProject(state.scopeId); sessLabel = 'All sessions in ' + state.scopeId;
   }
+  if (sessRows.length && state.sort !== 'relevance') {
+    const mentions = new Map(state.hits.map((h) => [h.sessionId, h.sessHits || 0]));
+    sessRows = [...sessRows].sort((a, b) => (state.sort === 'mentions'
+      ? (mentions.get(b.sessionId) || 0) - (mentions.get(a.sessionId) || 0) : 0)
+      || (b.lastActivityMs || 0) - (a.lastActivityMs || 0));
+  }
   if (sessRows.length) {
     addGroup(box, 'sessions', sessLabel, sessRows.length, null, (body) => {
       for (const s of sessRows) {
@@ -383,16 +427,24 @@ function renderResults() {
 
   // ----- Messages group (text-block matches, target-filtered) -----
   if (state.hits.length) {
+    const best = Math.min(...state.hits.map((h) => (h.score == null ? 0 : h.score)));
     addGroup(box, 'messages', 'Messages', state.hits.length, TARGET_LABEL[state.target], (body) => {
       for (const h of state.hits) {
         const r = el('div', 'gitem msg-item');
         r.dataset.sid = h.sessionId; r.dataset.mi = h.msgIndex;
         // hits carry their own clientId, so a mixed result list names each agent correctly
         const kindLabel = h.kind === 'text' ? whoLabel(h.role, h).toLowerCase() : h.kind.replace('_', ' ');
+        const tier = relevanceTier(h.score, best);
+        const tierName = ['', 'weaker', 'good', 'strong'][tier];
         r.innerHTML =
-          `<div class="gi-crumb"><span class="rolepill rp-${h.kind}">${kindLabel}</span>` +
+          `<div class="gi-row"><div class="gi-crumb"><span class="rolepill rp-${h.kind}">${kindLabel}</span>` +
           `<span class="proj">${esc(h.project)}</span><span class="sep">›</span>` +
           `<span>${esc((h.title || h.sessionId.slice(0, 8)).slice(0, 46))}</span></div>` +
+          `<div class="gi-meta">` +
+          (tier ? `<span class="relm r${tier}" title="Relevance: ${tierName} match, relative to the best result"><i></i><i></i><i></i></span>` : '') +
+          (h.sessHits > 1 ? `<span class="mentions" title="${h.sessHits} matching messages in this session">×${h.sessHits}</span>` : '') +
+          (h.ts ? `<span class="when" title="${esc(abs(h.ts))} · ${esc(ago(Date.parse(h.ts)))}">${esc(when(h.ts))}</span>` : '') +
+          `</div></div>` +
           `<div class="gi-snip">${highlight((h.snippet || '').replace(/\s+/g, ' ').trim(), state.query)}</div>`;
         r.onclick = () => openSession(h.sessionId, { msgIndex: h.msgIndex });
         body.appendChild(r);
@@ -453,6 +505,20 @@ function loadMsgTypes() {
   return new Set(ALL_TYPE_KEYS);
 }
 state.msgTypes = loadMsgTypes();
+
+// Result ordering. Applied by the SERVER before its limit — see store.search for why it can't be
+// a client-side re-sort of the returned page.
+const SORTS = [
+  { key: 'relevance', label: 'Best match', hint: 'Ranked by BM25 relevance' },
+  { key: 'recent', label: 'Newest', hint: 'Most recent messages first' },
+  { key: 'mentions', label: 'Most mentions', hint: 'Sessions that mention it most, grouped together' },
+];
+state.sort = (() => { try { const v = localStorage.getItem('am-sort'); return SORTS.some((x) => x.key === v) ? v : 'relevance'; } catch { return 'relevance'; } })();
+function setSort(key) {
+  state.sort = key;
+  try { localStorage.setItem('am-sort', key); } catch { /* private mode */ }
+  if (state.query) doSearch();
+}
 function saveMsgTypes() { localStorage.setItem('am-msgtypes', JSON.stringify([...state.msgTypes])); }
 /** The view strip is now the single filter: mirror it onto the server-side search target. */
 function syncTargetToTypes() {
@@ -572,6 +638,26 @@ function renderTranscript(s, messages, targetMi) {
   shown.forEach((m) => msgs.appendChild(messageRow(m, state.query, matchSet.has(m.msgIndex), m.msgIndex === targetMi, s)));
   if (!shown.length) msgs.appendChild(el('div', 'empty small', 'All message types are hidden — re-enable one above.'));
   detail.appendChild(msgs);
+
+  // ---- persistent reopen: docked to the bottom once the header's button has scrolled away, so a
+  // long transcript never means scrolling back up to act on it ----
+  const dock = el('div', 'actdock');
+  dock.appendChild(el('span', 'ad-title', s.title || s.sessionId.slice(0, 8)));
+  if (resume) {
+    const cp = mkBtn('⧉', () => copyWithToast(resume, 'Resume command copied'));
+    cp.classList.add('ghost'); cp.title = 'Copy resume command';
+    dock.appendChild(cp);
+  }
+  const dockOpen = mkBtn(openLabel(s), () => openInAgent(s));
+  dockOpen.classList.add('primary');
+  dockOpen.disabled = openBtn.disabled; dockOpen.title = openBtn.title;
+  dock.appendChild(dockOpen);
+  detail.appendChild(dock);
+  if (state.dockObserver) state.dockObserver.disconnect();   // re-render replaces the header it watched
+  state.dockObserver = new IntersectionObserver(
+    ([e]) => dock.classList.toggle('show', !e.isIntersecting), { root: detail });
+  state.dockObserver.observe(actions);
+
   detail.scrollTop = 0;
   // defer to next frame so layout is flushed (hundreds of rows just inserted) before scrolling
   if (targetMi != null) requestAnimationFrame(() => scrollToMatch(targetMi));
