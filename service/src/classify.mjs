@@ -7,7 +7,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { runClaude, extractJson, callsUsedToday, takeCall, DAILY_CALL_LIMIT } from './persona.mjs';
 
 const CATEGORIES = ['feature', 'ops', 'research', 'content', 'analysis', 'infra', 'other'];
@@ -16,7 +16,10 @@ const cacheKey = (sid) => 'classify:' + sid;
 // ---------- codex engine ----------
 const CODEX_CANDIDATES = [
   process.env.AGENT_MANAGER_CODEX_BIN || '',
-  '/Applications/ChatGPT.app/Contents/Resources/codex', // ChatGPT desktop bundles the full codex-cli
+  // ChatGPT desktop bundles the full codex-cli. The Sep 2026 build moved it into codex-cli/bin/;
+  // missing that silently dropped Codex as a "Refine with AI" engine, so keep both layouts.
+  '/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex',
+  '/Applications/ChatGPT.app/Contents/Resources/codex',
   path.join(os.homedir(), '.local', 'bin', 'codex'),
   '/opt/homebrew/bin/codex', '/usr/local/bin/codex',
 ].filter(Boolean);
@@ -25,8 +28,20 @@ export function codexBin() {
   for (const c of CODEX_CANDIDATES) { try { if (fs.existsSync(c)) return c; } catch { /* */ } }
   return null;
 }
+/**
+ * Is the user signed in to Codex? Asked of Codex's own CLI (`codex login status`: exit 0 = signed in),
+ * never by looking for its credential file — a plugin has no business touching another tool's
+ * credentials, even just to stat them. Cached briefly: the Refine dialog asks on every open.
+ */
+let codexLogin = { at: 0, ok: false };
 export function codexAvailable() {
-  return !!codexBin() && fs.existsSync(path.join(os.homedir(), '.codex', 'auth.json'));
+  const bin = codexBin();
+  if (!bin) return false;
+  if (Date.now() - codexLogin.at < 60_000) return codexLogin.ok;
+  let ok = false;
+  try { execFileSync(bin, ['login', 'status'], { stdio: 'ignore', timeout: 5000 }); ok = true; } catch { /* non-zero = signed out */ }
+  codexLogin = { at: Date.now(), ok };
+  return ok;
 }
 
 /** Headless codex call: `codex exec -s read-only -o <tmp> -` with the prompt on stdin. */

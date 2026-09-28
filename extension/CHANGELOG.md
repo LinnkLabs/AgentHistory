@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.9
+
+- **Dependencies are locked.** The package now ships an `npm-shrinkwrap.json`, so every install —
+  including the plugin's `npx` launch — gets the exact dependency tree that was reviewed.
+- **No credential files are touched.** Whether you are signed in to Codex is now asked of the Codex
+  CLI (`codex login status`) instead of checking for its credential file.
+- **Codex is found again after the September ChatGPT update**, which moved the bundled CLI and
+  silently removed Codex as a "Refine with AI" engine.
+- Added [PRIVACY.md](https://github.com/LinnkLabs/AgentHistory/blob/main/PRIVACY.md) and a plugin icon.
+
 ## 0.1.8
 
 - **Search is never squeezed again.** In a VS Code sidebar it was sharing a row with the ☰ button

@@ -1,18 +1,20 @@
 {
-  "name": "agent-manager",
-  "version": "0.1.1",
+  "name": "agent-history-cli",
+  "version": "0.1.9",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "agent-manager",
-      "version": "0.1.1",
+      "name": "agent-history-cli",
+      "version": "0.1.9",
       "license": "MIT",
       "dependencies": {
         "better-sqlite3": "^12.2.0"
       },
       "bin": {
-        "agent-manager": "bin/agent-manager.mjs"
+        "agent-history": "bin/agent-manager.mjs",
+        "agent-history-cli": "bin/agent-manager.mjs",
+        "agenthistory": "bin/agent-manager.mjs"
       },
       "engines": {
         "node": ">=20"

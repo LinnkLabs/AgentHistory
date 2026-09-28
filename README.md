@@ -59,6 +59,9 @@ searchable forever.
 
 ## Privacy — the important part
 
+The short version is below; [PRIVACY.md](PRIVACY.md) lists exactly what is read, stored, and when
+anything leaves your machine.
+
 - **100% local.** No server, no account, no telemetry, zero network calls for core features.
   The index is a SQLite file in `~/.claude/.agent-manager/`.
 - **Read-only** over the agents' files. It never modifies a transcript.

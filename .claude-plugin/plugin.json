@@ -2,7 +2,7 @@
   "$schema": "https://code.claude.com/schemas/plugin.json",
   "name": "agent-history",
   "displayName": "Agent History",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "A searchable memory of every past Claude Code and Codex session on your machine. Claude can find the decision, command, or fix you worked out weeks ago in another project, and pick up where you left off. 100% local and read-only; secrets are redacted before anything reaches the model.",
   "author": {
     "name": "LinnkLabs",
@@ -10,6 +10,10 @@
   },
   "homepage": "https://github.com/LinnkLabs/AgentHistory#readme",
   "repository": "https://github.com/LinnkLabs/AgentHistory",
+  "documentationUrl": "https://github.com/LinnkLabs/AgentHistory#readme",
+  "supportUrl": "https://github.com/LinnkLabs/AgentHistory/issues",
+  "privacyPolicyUrl": "https://github.com/LinnkLabs/AgentHistory/blob/main/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/LinnkLabs/AgentHistory/blob/main/LICENSE",
   "license": "MIT",
   "keywords": [
     "memory",
@@ -28,7 +32,7 @@
       "command": "npx",
       "args": [
         "-y",
-        "agent-history-cli@0.1.8",
+        "agent-history-cli@0.1.9",
         "mcp"
       ]
     }
