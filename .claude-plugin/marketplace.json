@@ -1,0 +1,16 @@
+{
+  "$schema": "https://code.claude.com/schemas/marketplace.json",
+  "name": "linnklabs",
+  "description": "Plugins from LinnkLabs: Agent History gives Claude a searchable memory of your past Claude Code and Codex sessions.",
+  "owner": {
+    "name": "LinnkLabs",
+    "url": "https://github.com/LinnkLabs"
+  },
+  "plugins": [
+    {
+      "name": "agent-history",
+      "source": "./",
+      "description": "Searchable memory of every past Claude Code and Codex session on your machine"
+    }
+  ]
+}

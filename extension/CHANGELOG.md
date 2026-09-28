@@ -17,6 +17,13 @@
 - **Reopen without scrolling back up.** Once the header's button scrolls out of view in a long
   transcript, a bar docks to the bottom with the session title, copy-resume, and the reopen action.
 - Common-word searches are about 5× faster: snippets are now built only for results that are shown.
+- **Claude Code plugin.** `/plugin marketplace add LinnkLabs/AgentHistory`, then
+  `/plugin install agent-history@linnklabs`: the MCP server plus *recall* and *catch-up* skills.
+- **MCP output is secret-redacted.** Tokens, keys, and credential assignments in past transcripts come
+  back as `[redacted:<kind>]` instead of landing in a live agent's context.
+- MCP `read_session` now returns the session's own resume command — Codex sessions previously got
+  `claude --resume`, the same bug 0.1.7 fixed in the dashboard.
+- The MCP server builds and refreshes the index itself, so installing only the plugin works.
 
 ## 0.1.7
 

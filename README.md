@@ -62,6 +62,11 @@ searchable forever.
 - **100% local.** No server, no account, no telemetry, zero network calls for core features.
   The index is a SQLite file in `~/.claude/.agent-manager/`.
 - **Read-only** over the agents' files. It never modifies a transcript.
+- **Secrets never reach your agents.** Transcripts are full of pasted tokens and `export KEY=…`
+  lines. Everything the MCP server returns is redacted first — npm, GitHub, Anthropic, OpenAI,
+  AWS, Stripe, Slack and Open VSX tokens, JWTs, private keys, bearer headers, and `*_TOKEN=` /
+  `password:` style assignments come back as `[redacted:<kind>]`. The dashboard, which is you
+  reading your own history, still shows everything.
 - **AI features are strictly opt-in** ("✨ Refine with AI", persona extraction): they run through
   **your own** logged-in `claude` or `codex` CLI on your machine, show you exactly how many calls
   they'll make before running, are capped per day, and never send tool outputs — only short
@@ -88,12 +93,30 @@ agent-history-cli mcp                 MCP server: give YOUR agents your history 
 
 (Installed globally, the short aliases `agenthistory` and `agent-history` work too.)
 
-The MCP server means your agents can use this too — Claude Code (or any MCP client) can search
-your past sessions and read your context book live:
+## Give your agents a memory — the Claude Code plugin
+
+The same index can serve your agents, so Claude can find the decision, command, or fix you worked
+out weeks ago in another project instead of re-deriving it. Install it as a plugin:
+
+```
+/plugin marketplace add LinnkLabs/AgentHistory
+/plugin install agent-history@linnklabs
+```
+
+That adds the MCP server plus two skills Claude reaches for on its own — **recall** (search past
+sessions when you refer to earlier work) and **catch-up** (what you were doing, and where to pick
+up) — also runnable as `/agent-history:recall` and `/agent-history:catch-up`.
+
+No setup: on first launch it builds the index in the background and says so if you ask too early.
+It keeps itself fresh after that. Needs Node 20+ on your PATH.
+
+Prefer to wire it by hand, or using another MCP client?
 
 ```bash
 claude mcp add -s user agent-history -- npx agent-history-cli mcp
 ```
+
+(Use one or the other — with both, Claude sees every tool twice.)
 
 ## VS Code / Cursor / Windsurf extension
 

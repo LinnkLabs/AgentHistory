@@ -125,6 +125,13 @@ Usage:
     const s = store.stats();
     process.stdout.write(`  ${s.sessions} sessions · ${s.projects} projects · ${s.messages} messages · ${fmtBytes(s.bytes)} of transcripts\n`);
     store.close();
+    // Launched by the MCP server? Release its lock — only if it's ours, never another indexer's.
+    try {
+      const [{ default: fs }, { default: path }, { dataDir }] = await Promise.all([
+        import('node:fs'), import('node:path'), import('../src/paths.mjs')]);
+      const lp = path.join(dataDir(), 'index.lock');
+      if (fs.readFileSync(lp, 'utf8').trim() === String(process.pid)) fs.unlinkSync(lp);
+    } catch { /* no lock, or not ours */ }
     return;
   }
 

@@ -6,14 +6,81 @@
 //
 // Design rules:
 // - stdout carries ONLY protocol frames; all logging goes to stderr.
-// - Read-only: no tool mutates the store (the daemon/CLI own writes).
-// - Same trust domain as the transcripts themselves: this serves the user's own local agents.
+// - Read-only: no tool mutates the store. Freshness comes from spawning the CLI indexer as a
+//   separate process (see ensureFreshIndex), so the writer stays the CLI, never this server.
+// - Every string that leaves is secret-redacted (redact.mjs). The dashboard is the user reading
+//   their own history; a tool result lands in a live agent's context, where a pasted token can be
+//   echoed, written to a file, or forwarded to another tool.
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawn } from 'node:child_process';
 import { readBook } from './persona.mjs';
+import { redact, redactDeep } from './redact.mjs';
+import { resumeCommand, clientOf } from './clients.mjs';
+import { dataDir } from './paths.mjs';
 
 const PROTOCOL_DEFAULT = '2025-06-18';
-const SERVER_INFO = { name: 'agent-history', version: '0.2.0' };
+const SERVER_INFO = { name: 'agent-history', version: '0.3.0' };
 
-const clip = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
+// Redact BEFORE truncating: cutting first could leave half a token that no pattern recognises.
+const clip = (s, n) => { s = redact(String(s || '')); return s.length > n ? s.slice(0, n) + '…' : s; };
+
+/**
+ * Snippet built from the full (redacted) message text around the first query term. FTS5's own
+ * snippet() works on its tokens, and its tokenizer splits `npm_<secret>` at the underscore — so it
+ * can return the secret body without the prefix any redaction rule anchors on.
+ */
+function snippetAround(text, query, width = 300) {
+  const t = redact(String(text || '')).replace(/\s+/g, ' ').trim();
+  const lower = t.toLowerCase();
+  let at = -1;
+  for (const term of String(query || '').toLowerCase().split(/\s+/)) {
+    const w = term.replace(/["*]/g, '');
+    if (w.length < 2) continue;
+    const i = lower.indexOf(w);
+    if (i >= 0 && (at < 0 || i < at)) at = i;
+  }
+  if (at < 0) return t.length > width ? t.slice(0, width) + '…' : t;
+  const start = Math.max(0, at - Math.floor(width / 3));
+  return (start > 0 ? '…' : '') + t.slice(start, start + width) + (start + width < t.length ? '…' : '');
+}
+
+// ---------- index freshness ----------
+// A user who installs only the plugin has never run the indexer, so without this every tool would
+// answer from an empty index forever. On startup we launch `agent-history-cli index` as a detached
+// child — incremental, so a warm run is seconds — unless another one is live or one just finished.
+const FRESH_MS = 10 * 60 * 1000;
+const lockPath = () => path.join(dataDir(), 'index.lock');
+const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e && e.code === 'EPERM'; } };
+
+function indexerRunning() {
+  try { const pid = Number(fs.readFileSync(lockPath(), 'utf8')); return pid > 0 && pidAlive(pid); } catch { return false; }
+}
+
+export function ensureFreshIndex(store, { entry = process.argv[1] } = {}) {
+  if (process.env.AGENT_HISTORY_NO_AUTOINDEX) return 'disabled';
+  if (!entry || indexerRunning()) return 'running';
+  const last = Number(store.meta('lastIndexMs') || 0);
+  if (last && Date.now() - last < FRESH_MS && store.stats().sessions > 0) return 'fresh';
+  try {
+    // stdio MUST be ignored: our stdout is the protocol channel, and the indexer prints progress.
+    const child = spawn(process.execPath, [entry, 'index'], { detached: true, stdio: 'ignore', env: process.env });
+    fs.writeFileSync(lockPath(), String(child.pid));
+    child.unref();
+    return 'started';
+  } catch (e) {
+    process.stderr.write(`agent-history: could not start indexer: ${e && e.message}\n`);
+    return 'failed';
+  }
+}
+
+/** Attached to results while the index is empty or still being built, so the agent can say why. */
+function indexNote(store) {
+  if (store.stats().sessions > 0) return undefined;
+  return indexerRunning()
+    ? 'Agent History is building its index for the first time — results will fill in over the next minute or two. Try again shortly.'
+    : 'The Agent History index is empty. Run `npx agent-history-cli index` once, or check that ~/.claude/projects or ~/.codex/sessions has transcripts.';
+}
 
 // target shorthand -> (role, kind), mirroring the dashboard's search chips
 const TARGETS = {
@@ -39,6 +106,7 @@ function tools(store) {
           project: { type: 'string', description: 'Limit to a project (folder basename)' },
           sessionId: { type: 'string', description: 'Limit to one session' },
           target: { type: 'string', enum: ['input', 'output', 'commands', 'toolout'], description: 'What kind of message to search' },
+          sort: { type: 'string', enum: ['relevance', 'recent', 'mentions'], description: 'relevance (default, BM25) | recent (newest first) | mentions (sessions that discuss it most)' },
           limit: { type: 'number', description: 'Max hits (default 20, max 50)' },
         },
         required: ['query'], additionalProperties: false,
@@ -51,13 +119,17 @@ function tools(store) {
           scopeId: a.sessionId || a.project || undefined,
           role: t.role, kind: t.kind,
           limit: Math.min(Number(a.limit) || 20, 50),
+          sort: ['relevance', 'recent', 'mentions'].includes(a.sort) ? a.sort : 'relevance',
+          withText: true,
         });
         return {
           hits: hits.map((h) => ({
             sessionId: h.sessionId, msgIndex: h.msgIndex, role: h.role, kind: h.kind, ts: h.ts,
-            project: h.project, folder: h.cwd, sessionTitle: clip(h.title, 80), snippet: clip(h.snippet, 300),
+            agent: clientOf(h).product, project: h.project, folder: h.cwd,
+            sessionTitle: clip(h.title, 80), mentionsInSession: h.sessHits,
+            snippet: h.text != null ? snippetAround(h.text, a.query) : clip(h.snippet, 300),
           })),
-          note: 'Use read_session with a sessionId+msgIndex to see full surrounding context.',
+          note: indexNote(store) || 'Use read_session with a sessionId+msgIndex to see full surrounding context. Values shown as [redacted:<kind>] were secrets and are withheld on purpose.',
         };
       },
     },
@@ -93,6 +165,7 @@ function tools(store) {
         const to = new Date(), from = new Date(Date.now() - days * 86_400_000);
         const r = store.retro({ fromIso: from.toISOString(), toIso: to.toISOString() });
         return {
+          note: indexNote(store),
           from: r.from, to: r.to, totals: r.totals, days: r.days,
           topSessions: r.topSessions.map((s) => ({
             sessionId: s.sessionId, title: clip(s.title, 80), project: s.project, promptsByUser: s.userMsgs,
@@ -127,8 +200,10 @@ function tools(store) {
         } else { lo = Math.max(0, msgs.length - radius * 2); hi = msgs.length; }
         const s = data.session;
         return {
-          session: { sessionId: s.sessionId, title: s.title, project: s.project, folder: s.cwd, model: s.model, lastTs: s.lastTs, msgCount: s.msgCount },
-          resumeCommand: s.source === 'desktop-cowork' ? null : `cd ${JSON.stringify(s.cwd || '.')} && claude --resume ${s.sessionId}`,
+          session: { sessionId: s.sessionId, title: s.title, project: s.project, folder: s.cwd, model: s.model, lastTs: s.lastTs, msgCount: s.msgCount,
+                     agent: `${clientOf(s).product} (${clientOf(s).surface})` },
+          // the session's OWN tool — `claude --resume` can never reopen a Codex session
+          resumeCommand: resumeCommand(s) || null,
           messages: msgs.slice(lo, hi).map((m) => ({ msgIndex: m.msgIndex, role: m.role, kind: m.kind, ts: m.ts, text: clip(m.text, 1500) })),
         };
       },
@@ -182,10 +257,12 @@ export function runMcp(store) {
       let out;
       try { out = t.run((params && params.arguments) || {}); }
       catch (e) { return reply(id, { content: [{ type: 'text', text: String(e && e.message || e) }], isError: true }); }
-      return reply(id, { content: [{ type: 'text', text: JSON.stringify(out, null, 1) }] });
+      // final net: every string in the result, whichever tool built it
+      return reply(id, { content: [{ type: 'text', text: JSON.stringify(redactDeep(out), null, 1) }] });
     }
     if (id !== undefined) fail(id, -32601, `method not found: ${method}`);
   }
 
-  process.stderr.write(`agent-history MCP server ready (${TOOLS.length} tools)\n`);
+  const idx = ensureFreshIndex(store);
+  process.stderr.write(`agent-history MCP server ready (${TOOLS.length} tools; index: ${idx})\n`);
 }
