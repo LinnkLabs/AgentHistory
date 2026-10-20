@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **Search always covers every message again.** The transcript's View filter (All · You · Claude ·
+  Cmds) also narrowed every later search, and was remembered across reloads: after reading one
+  transcript as "You" only, a search for a term with 526 matches showed 1, labelled only by a small
+  "your input". The View filter now affects only the transcript you're reading.
+- Opening a search hit whose type the View filter hides switches the view to All, so you always land
+  on the message you clicked; the ◂ n/m ▸ navigator counts only matches that are visible.
+
 ## 0.1.9
 
 - **Dependencies are locked.** The package now ships an `npm-shrinkwrap.json`, so every install —

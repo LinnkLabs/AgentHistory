@@ -428,7 +428,7 @@ function renderResults() {
   // ----- Messages group (text-block matches, target-filtered) -----
   if (state.hits.length) {
     const best = Math.min(...state.hits.map((h) => (h.score == null ? 0 : h.score)));
-    addGroup(box, 'messages', 'Messages', state.hits.length, TARGET_LABEL[state.target], (body) => {
+    addGroup(box, 'messages', 'Messages', state.hits.length, state.target !== 'all' ? TARGET_LABEL[state.target] : null, (body) => {
       for (const h of state.hits) {
         const r = el('div', 'gitem msg-item');
         r.dataset.sid = h.sessionId; r.dataset.mi = h.msgIndex;
@@ -520,12 +520,16 @@ function setSort(key) {
   if (state.query) doSearch();
 }
 function saveMsgTypes() { localStorage.setItem('am-msgtypes', JSON.stringify([...state.msgTypes])); }
-/** The view strip is now the single filter: mirror it onto the server-side search target. */
-function syncTargetToTypes() {
-  const t = state.msgTypes;
-  const only = (k) => t.size === 1 && t.has(k);
-  state.target = only('user') ? 'input' : only('assistant') ? 'output'
-    : only('tool_use') ? 'commands' : only('tool_result') ? 'toolout' : 'all';
+/**
+ * Matches in one session that the transcript's View strip currently shows — what the ◂ n/m ▸
+ * navigator steps through. The strip only filters the open transcript; it never narrows search.
+ * (It used to: a persisted "You only" view silently cut every later search to the user's own
+ * prompts — 1 hit where the index held 526 — with a small "your input" label as the only trace.)
+ */
+function sessionMatches(id) {
+  if (state.mode !== 'search') return [];
+  return state.hits.filter((h) => h.sessionId === id && state.msgTypes.has(typeKey(h)))
+    .map((h) => h.msgIndex).sort((a, b) => a - b);
 }
 
 async function openSession(id, opts = {}) {
@@ -545,10 +549,13 @@ async function openSession(id, opts = {}) {
     document.querySelectorAll('.card').forEach((c) => c.classList.toggle('active', false));
   }
 
-  // all in-session matches (for highlight + navigator) = message hits in this session
-  state.openMatches = state.mode === 'search'
-    ? state.hits.filter((h) => h.sessionId === id).map((h) => h.msgIndex).sort((a, b) => a - b)
-    : [];
+  // A clicked hit must land on screen: if the View strip hides its type, show everything rather
+  // than scroll to a message that isn't rendered.
+  if (state.mode === 'search' && opts.msgIndex != null) {
+    const hit = state.hits.find((h) => h.sessionId === id && h.msgIndex === opts.msgIndex);
+    if (hit && !state.msgTypes.has(typeKey(hit))) { state.msgTypes = new Set(ALL_TYPE_KEYS); saveMsgTypes(); }
+  }
+  state.openMatches = sessionMatches(id);
   const startMi = opts.msgIndex != null ? opts.msgIndex : (state.openMatches[0] ?? null);
   state.matchPos = startMi != null ? Math.max(0, state.openMatches.indexOf(startMi)) : 0;
 
@@ -599,7 +606,7 @@ function renderTranscript(s, messages, targetMi) {
   strip.appendChild(el('span', 'vs-label', 'View'));
   const seg = el('div', 'seg');
   const allBtn = el('button', 'seg-item' + (allOn ? ' on' : ''), 'All');
-  allBtn.onclick = () => { state.msgTypes = new Set(ALL_TYPE_KEYS); saveMsgTypes(); syncTargetToTypes(); rerenderTranscript({ preserveScroll: true }); if (state.query) doSearch(); };
+  allBtn.onclick = () => { state.msgTypes = new Set(ALL_TYPE_KEYS); saveMsgTypes(); rerenderTranscript({ preserveScroll: true }); };
   seg.appendChild(allBtn);
   const PRIMARY = ['user', 'assistant', 'tool_use'];   // the rest fold into the strip's own ⋯
   for (const t of present.filter((t) => PRIMARY.includes(t.key))) {
@@ -688,9 +695,7 @@ function toggleType(key, present) {
     if (!state.msgTypes.size) state.msgTypes = new Set(ALL_TYPE_KEYS); // never all-hidden
   } else state.msgTypes.add(key);
   saveMsgTypes();
-  syncTargetToTypes();
   rerenderTranscript({ preserveScroll: true });
-  if (state.query) doSearch();   // keep the Messages group in step with the view filter
 }
 /** Shared popup menu (used by the board cards too). */
 function popMenu(e, items) {
@@ -712,6 +717,9 @@ function rerenderTranscript(opts = {}) { // re-apply filters to the already-open
   if (!state.openMeta) return;
   const detail = $('#detail');
   const keep = opts.preserveScroll ? detail.scrollTop : 0;
+  const current = state.openMatches[state.matchPos];
+  state.openMatches = sessionMatches(state.openMeta.sessionId);
+  state.matchPos = Math.max(0, state.openMatches.indexOf(current));
   renderTranscript(state.openMeta, state.openMessages, null);
   if (opts.preserveScroll) detail.scrollTop = keep;
 }
@@ -1339,7 +1347,6 @@ function bindResizer(rz, pane, key, minFn, maxFn) {
 }
 
 initTheme();
-syncTargetToTypes();   // persisted view filter defines the initial search target
 initNarrow();
 initResizers();
 bindSearch();
