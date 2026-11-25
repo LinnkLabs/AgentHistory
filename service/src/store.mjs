@@ -93,8 +93,9 @@ END;
 
 // Bump whenever a reader's OUTPUT changes for files it already indexed — readers treat a row with
 // an older parserSchemaVer as a cache miss, so users get the fix on the next run instead of having
-// to know about `index --force`. (v5: Codex entrypoint now carries the real originator + thread names.)
-export const SCHEMA_VERSION = 5;
+// to know about `index --force`. (v5: Codex entrypoint carries the real originator + thread names.
+// v6: origin.kind "human" is the person, not injected content.)
+export const SCHEMA_VERSION = 6;
 
 export function openStore() {
   const db = new Database(dbPath());

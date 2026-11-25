@@ -48,8 +48,10 @@ function toolResultText(content) {
 // triggers, interrupts). NOTE: excludes <uploaded_files> — its real user text sits in the same block.
 const INJECTED_TAG_RE = /^\s*(?:<task-notification|<system-reminder|<ide_opened_file|<ide_selection|<local-command-caveat|<local-command-stdout|<local-command-stderr|<command-name|<command-message|<command-args|<user-prompt-submit-hook|<scheduled-task|<<autonomous-loop|\[Request interrupted)/;
 const isInjectedText = (s) => INJECTED_TAG_RE.test(String(s || ''));
-// The whole event is injected when Claude Code tags it: origin.kind (task-notification, peer) or isMeta.
-const eventLevelInjected = (o) => !!(o && ((o.origin && typeof o.origin === 'object' && o.origin.kind) || o.isMeta === true));
+// The whole event is injected when Claude Code tags it: origin.kind (task-notification, peer, …) or
+// isMeta. Since ~2.1.2xx it also stamps the person's own messages, as origin.kind "human" — treating
+// every kind as injected filed 70% of real prompts under "system" for three months.
+const eventLevelInjected = (o) => !!(o && ((o.origin && typeof o.origin === 'object' && o.origin.kind && o.origin.kind !== 'human') || o.isMeta === true));
 
 /**
  * Extract indexable messages from one parsed JSONL event.

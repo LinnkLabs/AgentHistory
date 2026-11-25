@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Your own messages are indexed as yours again.** Newer Claude Code versions tag a person's
+  messages with `origin.kind: "human"`, and the parser treated every tagged message as injected
+  content. Since August, most real prompts were filed under "System", so the "You" filter and
+  input-only searches missed them. Existing indexes repair themselves on the next run.
 - **Search always covers every message again.** The transcript's View filter (All · You · Claude ·
   Cmds) also narrowed every later search, and was remembered across reloads: after reading one
   transcript as "You" only, a search for a term with 526 matches showed 1, labelled only by a small
